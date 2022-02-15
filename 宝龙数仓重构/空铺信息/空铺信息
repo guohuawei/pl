@@ -1,0 +1,81 @@
+select t2.area_name,                                                         -- 区域名称
+       t2.id,                                                                -- 区域id
+       bis_project.bis_project_id,                                           -- 项目id
+       bis_project.project_name,                                             -- 项目名称
+       bis_store.bis_store_id,                                               -- 铺位id
+       bis_store.store_no,                                                   -- 铺位号
+       bis_store.rent_square,                                                -- 铺位计租面积
+       datediff(current_date, nvl(t.cont_end_date, bis_store.created_date)), -- 空铺天数
+       bis_floor.charge_type,                                                -- 物业类型（1：购物中心 2:商业街 3：住宅 4：住宅底商 5：写字楼）
+       bis_store.is_assess,                                                  -- 铺位是否考核(bis_store.IS_ASSESS = 'Y'为考核)
+       bis_floor.bis_floor_id,                                               -- 楼层id
+       bis_floor.floor_num,                                                  -- 楼层
+       current_date                                                          -- ETL时间
+from ods.ods_pl_powerdes_bis_store_dt bis_store
+         left join ods.ods_pl_powerdes_bis_floor_dt bis_floor on bis_store.bis_floor_id = bis_floor.bis_floor_id and
+                                                                 bis_floor.bis_project_id = bis_store.bis_project_id
+         inner join ods.ods_pl_powerdes_bis_project_dt bis_project
+                    on bis_store.bis_project_id = bis_project.bis_project_id and OPER_STATUS = '2' and
+                       is_business_project = '1' -- 在营项目
+         left join
+     (
+         select bs_area.id,
+                bs_area.area_name,  -- 区域名称
+                bs_mall.area,
+                bs_mall.out_mall_id -- 项目id
+         from ods.ods_pl_pms_bis_db_bs_area_dt bs_area
+                  left join ods.ods_pl_pms_bis_db_bs_mall_dt bs_mall
+                            on bs_area.id = bs_mall.area
+         where bs_mall.is_del = '0'
+           and stat = '2'
+     ) t2 on bis_project.bis_project_id = t2.out_mall_id
+         left join
+     (
+         -- 铺位对应的最近的上一份有效合同
+         select bis_store_id,
+                bis_project_id,
+                cont_end_date,
+                store_type
+         from (
+                  -- 铺位打散
+                  SELECT tmp.bis_cont_id,
+                         tmp.bis_store_ids,
+                         bis_store_id,
+                         bis_project_id,
+                         cont_end_date,
+                         store_type,
+                         row_number() over (partition by bis_project_id,bis_store_id order by cont_end_date desc ) rank
+                  FROM (
+                           SELECT bis_cont_id,
+                                  bis_store_ids,
+                                  bis_project_id,
+                                  IF(status_cd = '2',cont_to_fail_date,cont_end_date) cont_end_date,
+                                  store_type
+                           FROM ods.ods_pl_powerdes_bis_cont_dt
+                           where effect_flg = 'Y'
+                       ) tmp LATERAL VIEW explode(split(bis_store_ids, ',')) tmp1 AS bis_store_id
+              ) t
+         where t.rank = 1
+     ) t on bis_store.bis_store_id = t.bis_store_id and bis_store.bis_project_id = t.bis_project_id
+
+where bis_store.bis_store_id not in
+      (
+          select t.bis_store_id -- 非空铺
+          from (
+                   -- 铺位打散
+                   SELECT tmp.bis_cont_id,
+                          tmp.bis_store_ids,
+                          bis_store_id,
+                          bis_project_id
+                   FROM (
+                            SELECT bis_cont_id,
+                                   bis_store_ids,
+                                   bis_project_id
+                            FROM ods.ods_pl_powerdes_bis_cont_dt
+                            where effect_flg = 'Y' -- 有效合同，对应的铺位不是空铺
+                        ) tmp LATERAL VIEW explode(split(bis_store_ids, ',')) tmp1 AS bis_store_id
+               ) t
+      )
+  and bis_store.is_delete = 'N'
+  and bis_store.status_cd = '1';
+

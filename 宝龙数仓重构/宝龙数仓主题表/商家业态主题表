@@ -1,0 +1,146 @@
+-- 新业态
+select BIS_SHOP.BIS_SHOP_ID,                             -- 商家id
+       max(case
+               when BIS_SHOP_SORT_NEW.SORT_TYPE = 1 then BIS_SHOP_SORT_NEW.SORT_NAME
+               else null end) as primary_forms,          -- 一级业态
+       max(case
+               when BIS_SHOP_SORT_NEW.SORT_TYPE = 2 then BIS_SHOP_SORT_NEW.SORT_NAME
+               else null end) as secondary_formats,      -- 二级业态
+       max(case
+               when BIS_SHOP_SORT_NEW.SORT_TYPE = 3 then BIS_SHOP_SORT_NEW.SORT_NAME
+               else null end) as thirdly_formats,        -- 三级业态
+       max(case
+               when BIS_SHOP_SORT_NEW.SORT_TYPE = 1 then BIS_SHOP_SORT_NEW.layout_cd
+               else null end) as primary_forms_code,     -- 一级业态code
+       max(case
+               when BIS_SHOP_SORT_NEW.SORT_TYPE = 2 then BIS_SHOP_SORT_NEW.layout_cd
+               else null end) as secondary_formats_code, -- 二级业态code
+       max(case
+               when BIS_SHOP_SORT_NEW.SORT_TYPE = 3 then BIS_SHOP_SORT_NEW.layout_cd
+               else null end) as thirdly_formats_code,   -- 三级业态code
+       max(BIS_SHOP.NAME_CN)     cooperative_brand,      -- 商家名称
+       max(COMPANY_NAME)         company_name,           -- 品牌集团名称
+       max(case
+               when bis_shop.is_new_shop = '1' then '有效'
+               when bis_shop.is_new_shop = '0' then '无效'
+               else null end)    bis_shop_status,        -- 商家状态,
+       current_date                                      -- ETL时间
+from ods.ods_pl_powerdes_bis_shop_dt BIS_SHOP
+         left join ods.ods_pl_powerdes_bis_shop_sort_new_rel_dt BIS_SHOP_SORT_NEW_REL
+                   on BIS_SHOP.BIS_SHOP_ID = BIS_SHOP_SORT_NEW_REL.BIS_SHOP_ID
+         left join ods.ods_pl_powerdes_bis_shop_sort_new_dt BIS_SHOP_SORT_NEW
+                   on BIS_SHOP_SORT_NEW_REL.BIS_SHOP_SORT_ID = BIS_SHOP_SORT_NEW.BIS_SHOP_SORT_ID
+where BIS_SHOP.IS_NEW = '1'
+group by BIS_SHOP.BIS_SHOP_ID
+
+union all
+-- 老业态
+select t3.bis_shop_id,            -- 商家id
+       t3.primary_forms,          -- 一级业态
+       t3.secondary_formats,      -- 二级业态
+       t3.thirdly_formats,        -- 三级业态
+       t2.primary_forms_code,     -- 一级业态code
+       t3.secondary_formats_code, -- 二级业态code
+       t3.thirdly_formats_code,   -- 三级业态code
+       t3.cooperative_brand,      -- 商家名称
+       t3.company_name,           -- 品牌集团名称
+       t3.bis_shop_status,        -- 商家状态
+       current_date               -- ETL时间
+from (
+         select t1.bis_shop_id,
+                case
+                    when t1.primary_forms = '百货' then '次主力店'
+                    when t1.primary_forms = '名品' then '服装'
+                    when t1.primary_forms like '%配套-配套集合店%' then '零售配套'
+                    when t1.primary_forms like '%配套-鞋包/珠宝配饰/化妆品/精品%' then '零售配套'
+                    when t1.primary_forms like '%配套-文娱类配套-文具%' then '零售配套'
+                    when t1.primary_forms like '%配套-文娱类配套-音像%' then '零售配套'
+                    when t1.primary_forms like '%配套-文娱类配套-礼品精品%' then '零售配套'
+                    when t1.primary_forms like '%配套-文娱类配套-艺术品%' then '零售配套'
+                    when t1.primary_forms like '%配套-文娱类配套-书店%' then '生活配套'
+                    when t1.primary_forms like '%配套-休闲娱乐%' then '生活配套'
+                    when t1.primary_forms like '%配套-生活配套/服务%' then '生活配套'
+                    else t1.primary_forms end as primary_forms, -- 一级业态
+                t1.secondary_formats,                           -- 二级业态
+                t1.thirdly_formats,                             -- 三级业态
+                t1.primary_forms_code,                          -- 一级业态code
+                t1.secondary_formats_code,                      -- 二级业态code
+                t1.thirdly_formats_code,                        -- 三级业态code
+                t1.cooperative_brand,                           -- 商家名称
+                t1.company_name,                                -- 品牌集团名称
+                t1.bis_shop_status                              -- 商家状态
+         from (
+                  -- 老业态
+                  select bis_shop_id,
+                         if(primary_forms = '配套' and
+                            secondary_formats in ('配套集合店', '鞋包/珠宝配饰/化妆品/精品', '文娱类配套', '休闲娱乐', '生活配套/服务'),
+                            concat_ws('-', primary_forms, secondary_formats, thirdly_formats),
+                            primary_forms) primary_forms,
+                         secondary_formats,
+                         thirdly_formats,
+                         primary_forms_code,
+                         secondary_formats_code,
+                         thirdly_formats_code,
+                         cooperative_brand,
+                         company_name,
+                         bis_shop_status
+                  from (-- 老业态
+                           select BIS_SHOP.BIS_SHOP_ID,                             --商家id
+                                  max(case
+                                          when BIS_SHOP_SORT.SORT_TYPE = 1 then BIS_SHOP_SORT.SORT_NAME
+                                          else null end) as primary_forms,          -- 一级业态
+                                  max(case
+                                          when BIS_SHOP_SORT.SORT_TYPE = 2 then BIS_SHOP_SORT.SORT_NAME
+                                          else null end) as secondary_formats,      -- 二级业态
+                                  max(case
+                                          when BIS_SHOP_SORT.SORT_TYPE = 3 then BIS_SHOP_SORT.SORT_NAME
+                                          else null end) as thirdly_formats,        -- 三级业态
+                                  max(case
+                                          when BIS_SHOP_SORT.SORT_TYPE = 1 then BIS_SHOP_SORT.layout_cd
+                                          else null end) as primary_forms_code,     -- 一级业态code
+                                  max(case
+                                          when BIS_SHOP_SORT.SORT_TYPE = 2 then BIS_SHOP_SORT.layout_cd
+                                          else null end) as secondary_formats_code, -- 二级业态code
+                                  max(case
+                                          when BIS_SHOP_SORT.SORT_TYPE = 3 then BIS_SHOP_SORT.layout_cd
+                                          else null end) as thirdly_formats_code,   -- 三级业态code
+                                  max(BIS_SHOP.NAME_CN)     cooperative_brand,      -- 商家名称
+                                  max(COMPANY_NAME)         company_name,           -- 品牌集团名称
+                                  max(case
+                                          when bis_shop.is_new_shop = '1' then '有效'
+                                          when bis_shop.is_new_shop = '0' then '无效'
+                                          else null end)    bis_shop_status         -- 商家状态,
+
+                           from ods.ods_pl_powerdes_bis_shop_dt BIS_SHOP
+                                    left join ods.ods_pl_powerdes_bis_shop_sort_rel_dt BIS_SHOP_SORT_REL
+                                              on BIS_SHOP.BIS_SHOP_ID = BIS_SHOP_SORT_REL.BIS_SHOP_ID
+                                    left join ods.ods_pl_powerdes_bis_shop_sort_dt BIS_SHOP_SORT
+                                              on BIS_SHOP_SORT.BIS_SHOP_SORT_ID = BIS_SHOP_SORT_REL.BIS_SHOP_SORT_ID
+                           where (BIS_SHOP.IS_NEW is null or BIS_SHOP.IS_NEW = '0')
+                             and BIS_SHOP_SORT.SORT_TYPE <> '0'
+                             and BIS_SHOP_SORT.SORT_TYPE is not null
+                           group by BIS_SHOP.BIS_SHOP_ID
+                       ) t
+              ) t1
+     ) t3
+         left join
+     (
+         -- 新业态
+         select distinct primary_forms, primary_forms_code
+         from (
+                  select case
+                             when BIS_SHOP_SORT_NEW.SORT_TYPE = 1 then BIS_SHOP_SORT_NEW.SORT_NAME
+                             else null end as primary_forms,     -- 一级业态
+                         case
+                             when BIS_SHOP_SORT_NEW.SORT_TYPE = 1 then BIS_SHOP_SORT_NEW.layout_cd
+                             else null end as primary_forms_code -- 一级业态code
+
+                  from ods.ods_pl_powerdes_bis_shop_dt BIS_SHOP
+                           left join ods.ods_pl_powerdes_bis_shop_sort_new_rel_dt BIS_SHOP_SORT_NEW_REL
+                                     on BIS_SHOP.BIS_SHOP_ID = BIS_SHOP_SORT_NEW_REL.BIS_SHOP_ID
+                           left join ods.ods_pl_powerdes_bis_shop_sort_new_dt BIS_SHOP_SORT_NEW
+                                     on BIS_SHOP_SORT_NEW_REL.BIS_SHOP_SORT_ID = BIS_SHOP_SORT_NEW.BIS_SHOP_SORT_ID
+                  where BIS_SHOP.IS_NEW = '1'
+                    and BIS_SHOP_SORT_NEW.SORT_TYPE = 1
+              ) t
+     ) t2 on t3.primary_forms = t2.primary_forms

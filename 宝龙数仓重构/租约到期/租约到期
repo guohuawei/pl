@@ -1,0 +1,43 @@
+SELECT t2.area_name,               -- 区域名称
+       t2.id,                      -- 区域id
+       bis_project.bis_project_id, -- 项目id
+       bis_project.short_name,     -- 项目名称
+       BIS_CONT.BIS_CONT_ID,       -- 合同id
+       bis_cont.bis_shop_id,       -- 商户id
+       bis_cont.cont_end_date,     -- 合同结束日期
+       bis_cont.rent_square,       -- 合同计租面积
+       bis_shop.name_cn,           -- 商户名称
+       bis_cont.store_type,        -- 物业类型（1：购物中心 2:商业街 3：住宅 4：住宅底商 5：写字楼）
+       bis_store.IS_ASSESS,        -- 铺位是否考核（Y: 考核）
+       current_date                -- ETL时间
+
+FROM ods.ods_pl_powerdes_bis_store_dt bis_store
+         inner join ods.ods_pl_powerdes_bis_cont_dt bis_cont
+                    on BIS_STORE.BIS_STORE_ID = BIS_CONT.BIS_STORE_IDS
+         LEFT JOIN ods.ods_pl_powerdes_bis_project_dt bis_project
+                   ON bis_cont.bis_project_id = bis_project.bis_project_id
+         left join ods.ods_pl_powerdes_bis_shop_dt bis_shop
+                   on bis_cont.bis_shop_id = bis_shop.bis_shop_id and BIS_SHOP.delete_bl <> '1'
+         left join
+     (
+         select bs_area.id,
+                bs_area.area_name,  -- 区域名称
+                bs_mall.area,
+                bs_mall.out_mall_id -- 项目id
+         from ods.ods_pl_pms_bis_db_bs_area_dt bs_area
+                  left join ods.ods_pl_pms_bis_db_bs_mall_dt bs_mall
+                            on bs_area.id = bs_mall.area
+         where bs_mall.is_del = '0'
+           and stat = '2'
+     ) t2 on bis_project.bis_project_id = t2.out_mall_id
+
+where (bis_cont.EFFECT_FLG = 'Y' OR bis_cont.EFFECT_FLG IS NULL)
+  and bis_store.is_delete = 'N'
+  -- /*考核商铺*/
+  -- and bis_store.IS_ASSESS = 'Y'
+  and bis_store.status_cd = '1' -- 有效铺位
+  and bis_project.is_business_project = '1'
+  and bis_project.oper_status = '2';
+
+
+-- cont_end_date <= add_months(current_date,3)

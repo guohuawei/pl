@@ -1,0 +1,156 @@
+-- 合并sqlserver 和 mongodb 的小时客流
+insert OVERWRITE table dws.dws_bis_passenger_flow_hour_big_dt partition (dt = '${hiveconf:nowdate}')
+-- sqlserver 小时客流
+select t2.area_name,        -- 区域名称
+       t2.id,               -- 区域id
+       proj.bis_project_id, -- 项目id
+       proj.bis_short_name, -- 项目简称
+       t.prj_siteid,
+       t.prj_sitekey,
+       string(t.prj_parentid),
+       t.prj_sitename,
+       t.loc_SiteId                            as SiteId_Loc,
+       t.loc_SiteKey                           as SiteKey_Loc,
+       t.loc_SiteName                          as SiteName_Loc,
+       hr.SiteType,
+       hr.DateKey,
+       hr.HourKey,
+       hr.InSum,
+       hr.OutSum,
+       date_format(current_date(), 'yyyyMMdd') as Synchro_dt
+from (
+         select prj.sitename as prj_sitename,
+                prj.sitekey  as prj_sitekey,
+                prj.siteid   as prj_siteid,
+                prj.parentid as prj_parentid,
+                loc.siteid   as loc_siteid,
+                loc.sitekey  as loc_sitekey,
+                loc.sitename as loc_sitename,
+                loc.parentid as loc_parentid,
+                loc.sitetype as loc_sitetype
+         from (
+                  select SiteId,
+                         SiteKey,
+                         ParentId,
+                         SiteName
+                  from ods.ods_sqlserver_inttraffic_sites_dt
+                  where SiteType = '300'
+              ) prj
+                  left outer join
+              (
+                  select SiteId,
+                         SiteKey,
+                         ParentId,
+                         SiteName,
+                         SiteType
+                  from ods.ods_sqlserver_inttraffic_sites_dt
+                  where SiteType in ('700', '300')
+              ) loc
+              on prj.SiteId = loc.ParentId
+
+         union
+
+         select prj.sitename as prj_sitename,
+                prj.sitekey  as prj_sitekey,
+                prj.siteid   as prj_siteid,
+                prj.parentid as prj_parentid,
+                loc.siteid   as loc_siteid,
+                loc.sitekey  as loc_sitekey,
+                loc.sitename as loc_sitename,
+                loc.parentid as loc_parentid,
+                loc.sitetype as loc_sitetype
+         from (
+                  select SiteId,
+                         SiteKey,
+                         ParentId,
+                         SiteName
+                  from ods.ods_sqlserver_inttraffic_sites_dt
+                  where SiteType = '300'
+              ) prj
+                  left outer join
+              (
+                  select SiteId,
+                         SiteKey,
+                         ParentId,
+                         SiteName,
+                         SiteType
+                  from ods.ods_sqlserver_inttraffic_sites_dt
+                  where SiteType in ('700', '300')
+              ) loc
+              on prj.SiteId = loc.SiteId
+     ) t
+         left outer join
+     (
+         select SiteKey,
+                SiteType,
+                replace(substr(CountDate, 0, 10), '-', '') as DateKey,
+                substr(CountDate, 12, 2)                   as HourKey,
+                InSum,
+                OutSum
+         from ods.ods_sqlserver_intsummary_sixty_dt
+     ) hr
+     on t.loc_sitekey = hr.SiteKey and t.loc_sitetype = hr.SiteType
+         left join
+     (select site_key,
+             site_name,
+             bis_project_name as bis_project_id,
+             bis_project_id   as bis_project_name,
+             bis_short_name
+      from ods.ods_pl_powerdes_traffic_sites_project_dt
+     ) proj on t.prj_sitekey = proj.site_key
+         left join
+     (
+         select bs_area.id,
+                bs_area.area_name,  -- 区域名称
+                bs_mall.area,
+                bs_mall.out_mall_id -- 项目id
+         from ods.ods_pl_pms_bis_db_bs_area_dt bs_area
+                  left join ods.ods_pl_pms_bis_db_bs_mall_dt bs_mall
+                            on bs_area.id = bs_mall.area
+         where bs_mall.is_del = '0'
+           and stat = '2'
+     ) t2 on proj.bis_project_id = t2.out_mall_id
+
+
+union all
+
+--mongodb 小时客流
+select t2.area_name,        -- 区域名称
+       t2.id,               -- 区域id
+       proj.bis_project_id, -- 项目id
+       proj.bis_short_name, -- 项目简称
+       null                                       as SITEID,
+       SITEKEY,
+       PARENTID,
+       SITENAME,            -- 项目名称
+       null                                       as SITEID_LOC,
+       null                                       as SITEKEY_LOC,
+       null                                       as SITENAME_LOC,
+       SITETYPE,
+       replace(substr(CountDate, 0, 10), '-', '') as DATEKEY,
+       substr(CountDate, 12, 2)                   as HOURKEY,
+       INSUM,
+       OUTSUM,
+       date_format(current_date(), 'yyyyMMdd')    as SYNCHRO_DT
+from dwd.dwd_mongodb_passenger_flow_hour_big_dt
+         left join
+     (select site_key,
+             site_name,
+             bis_project_name as bis_project_id,
+             bis_project_id   as bis_project_name,
+             bis_short_name
+      from ods.ods_pl_powerdes_traffic_sites_project_dt
+     ) proj on dwd_mongodb_passenger_flow_hour_big_dt.sitekey = proj.site_key
+         left join
+     (
+         select bs_area.id,
+                bs_area.area_name,  -- 区域名称
+                bs_mall.area,
+                bs_mall.out_mall_id -- 项目id
+         from ods.ods_pl_pms_bis_db_bs_area_dt bs_area
+                  left join ods.ods_pl_pms_bis_db_bs_mall_dt bs_mall
+                            on bs_area.id = bs_mall.area
+         where bs_mall.is_del = '0'
+           and stat = '2'
+     ) t2 on proj.bis_project_id = t2.out_mall_id
+where dt = date_format(current_date(), 'yyyyMMdd');

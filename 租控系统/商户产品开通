@@ -1,0 +1,52 @@
+select bis_cont.bis_project_id, -- 项目id
+       bis_cont.bis_cont_id,    -- 合同id
+       bis_cont.bis_shop_id,    -- 商家id
+       t1.open_type,            --(0:未开通商+小程序 1:开通商+小程序)
+       t2.is_alipay,            -- 是否支持支付宝支付 1: 是 0: 否
+       t2.is_wxpay,             -- 是否采用微信支付（1:是  0:否）
+       t3.video_type,           -- 直播协议（0：否 1：是）
+       t3.shop_type,            -- 线上商城协议（0：否 1：是）
+       current_date             -- ETL时间
+from ods.ods_pl_powerdes_bis_cont_dt bis_cont
+         left join
+     (
+         select a.MALL_ID,                            -- 项目id
+                a.BIS_CONT_ID,                        -- 合同id
+                a.CONT_NO,                            -- 合同号
+                if(b.nums > 0, '1', '0') AS open_type -- (0:未开通商+小程序 1:开通商+小程序)
+         from ods.ods_pl_pms_bis_db_mer_clerk_open_dt a
+                  left join
+              (
+                  select CLERK_OPEN_ID,
+                         count(1) nums
+                  from ods.ods_pl_pms_bis_db_mer_clerk_info_dt
+                  where IS_DEL = 0
+                  group by CLERK_OPEN_ID
+              ) b
+              on a.id = b.clerk_OPEN_ID
+         where a.IS_DEL = 0
+     ) t1 on bis_cont.bis_cont_id = t1.bis_cont_id and bis_cont.bis_project_id = t1.mall_id
+         left join
+     (
+         select project_id, -- 项目id
+                id,         -- 商家id
+                is_alipay,  -- 是否支持支付宝支付 1: 是 0: 否
+                is_wxpay    -- 是否采用微信支付（1:是  0:否）
+         from ods.ods_pl_bl_basic_merchant_dt basic_merchant
+     ) t2 on bis_cont.bis_shop_id = t2.id and bis_cont.bis_project_id = t2.project_id
+         left join
+     (
+         select t1.project_id,                                                       -- 项目id
+                t1.merchant_id,                                                      -- 商家id
+                max(case when t1.protocol_type = 0 then 1 else 0 end) as video_type, --  直播协议（0：否 1：是）
+                max(case when t1.protocol_type = 2 then 1 else 0 end) as shop_type   --   线上商城协议（0：否 1：是）
+         from ods.ods_pl_bl_merchant_protocol_dt t1
+         where t1.protocol_type in (0, 2)
+         group by t1.project_id, t1.merchant_id
+     ) t3 on bis_cont.bis_shop_id = t3.merchant_id and bis_cont.bis_project_id = t3.project_id
+where bis_cont.effect_flg <> 'D'
+
+
+
+
+

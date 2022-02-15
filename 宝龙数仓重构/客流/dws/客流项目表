@@ -1,0 +1,9 @@
+select t1.site_key,
+       t1.site_name,
+       bis_project_name,
+       t1.bis_project_id,
+       t2.short_name,
+       current_date
+from ods.ods_pl_powerdes_traffic_sites_project_dt t1
+left join ods.ods_pl_powerdes_bis_project_dt t2
+on t1.bis_project_name = t2.bis_project_id;

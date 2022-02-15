@@ -1,0 +1,89 @@
+select t1.area_name,                  -- 区域名称
+       t1.area_id,                    -- 区域id
+       t1.bis_project_id,             -- 项目id
+       t1.short_name,                 -- 项目名称
+       t1.query_year,                 -- 年
+       t1.query_month,                -- 月
+       t1.query_date,                 -- 年月 2021-12
+       t1.bis_shop_id,                -- 商家id
+       t1.name_cn,                    -- 商家名称
+       t1.fee_type,                   -- 费项（1：租金 2：物管）
+       t1.store_type,                 -- 物业类型（1：购物中心 2:商业街 3：住宅 4：住宅底商 5：写字楼）
+       t1.owe_qz * t4.area_percent,   -- 欠费（权责月）
+       t1.owe_cont * t4.area_percent, -- 欠费（应收月）
+       t1.bis_cont_id,                -- 合同id
+       t4.bis_store_id,               -- 铺位id
+       t4.totalArea,                  -- 合同所包含的所有铺位的面积
+       t4.rent_square,                -- 铺位计租面积
+       t4.area_percent                -- 单个铺位面积占整个合同所包含的所有铺位的面积的百分比
+from (
+         select t.area_name,      -- 区域名称
+                t.area_id,        -- 区域id
+                t.bis_project_id, -- 项目id
+                t.short_name,     -- 项目名称
+                t.query_year,     -- 年
+                t.query_month,    -- 月
+                t.query_date,     -- 年月 2021-12
+                t.bis_shop_id,    -- 商家id
+                t.name_cn,        -- 商家名称
+                t.fee_type,       -- 费项（1：租金 2：物管）
+                t.store_type,     -- 物业类型（1：购物中心 2:商业街 3：住宅 4：住宅底商 5：写字楼）
+                t.owe_qz,         -- 欠费（权责月）
+                t.owe_cont,       -- 欠费（应收月）
+                t.bis_cont_id     -- 合同id
+         from dws.dws_bis_rent_mgr_arrearage_big_dt t
+         where t.dt = date_format(current_date(), 'yyyyMMdd')
+     ) t1
+         left join
+     (
+         select t4.bis_cont_id,                               -- 合同id
+                t4.totalArea,                                 -- 合同所包含的所有铺位的面积
+                t6.bis_store_id,                              -- 铺位id
+                t6.rent_square,                               -- 铺位计租面积
+                t6.rent_square / t4.totalArea as area_percent -- 单个铺位面积占整个合同所包含的所有铺位的面积的百分比
+         from (
+                  select bis_cont_bis_store_ids.bis_cont_id,  -- 合同id
+                         sum(bis_store.rent_square) totalArea -- 一个合同下所有店铺面积总和
+                  from (
+                           select t.bis_store_id,
+                                  T.bis_cont_id
+                           from (
+                                    -- 铺位打散
+                                    SELECT tmp.bis_cont_id,
+                                           tmp.bis_store_ids,
+                                           bis_store_id,
+                                           bis_project_id
+                                    FROM (
+                                             SELECT bis_cont_id,
+                                                    bis_store_ids,
+                                                    bis_project_id
+                                             FROM ods.ods_pl_powerdes_bis_cont_dt
+                                         ) tmp LATERAL VIEW explode(split(bis_store_ids, ',')) tmp1 AS bis_store_id
+                                ) t
+                       ) bis_cont_bis_store_ids
+                           left join ods.ods_pl_powerdes_bis_store_dt bis_store
+                                     on bis_store.bis_store_id = bis_cont_bis_store_ids.bis_store_id
+                  group by bis_cont_bis_store_ids.bis_cont_id
+              ) t4
+                  left join
+              (
+                  select t.bis_store_id,       -- 铺位id
+                         t.bis_cont_id,        -- 合同id
+                         bis_store.rent_square -- 铺位计租面积
+                  from (
+                           -- 铺位打散
+                           SELECT tmp.bis_cont_id,
+                                  tmp.bis_store_ids,
+                                  bis_store_id,
+                                  bis_project_id
+                           FROM (
+                                    SELECT bis_cont_id,
+                                           bis_store_ids,
+                                           bis_project_id
+                                    FROM ods.ods_pl_powerdes_bis_cont_dt
+                                ) tmp LATERAL VIEW explode(split(bis_store_ids, ',')) tmp1 AS bis_store_id
+                       ) t
+                           left join ods.ods_pl_powerdes_bis_store_dt bis_store
+                                     on bis_store.bis_store_id = t.bis_store_id
+              ) t6 on t4.bis_cont_id = t6.bis_cont_id
+     ) t4 on t1.bis_cont_id = t4.bis_cont_id

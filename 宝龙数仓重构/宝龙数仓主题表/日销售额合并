@@ -1,0 +1,36 @@
+select nvl(t.bis_project_id, t1.bis_project_id),        -- 项目id
+       nvl(t.bis_shop_id, t1.bis_shop_id),              -- 品牌id
+       nvl(substr(t.SALES_DATE, 0, 10), t1.sales_date), -- 销售日期
+       nvl(t.sales_month, t1.sales_month),              -- 销售月
+       nvl(t.bis_cont_id, t1.bis_cont_id),              -- 合同id
+       nvl(t.sales_money, t1.sales_money),              -- 销售金额
+       nvl(t.effect_flg, t1.effect_flg),                -- 合同状态
+       nvl(t.cont_type_cd, t1.cont_type_cd)             -- 合同类型
+from (
+         select bis_cont.BIS_PROJECT_ID,
+                BIS_SALES_DAY.BIS_CONT_ID,
+                SALES_DATE,
+                SALES_MONTH,
+                SALES_MONEY,
+                bis_cont.bis_shop_id,
+                bis_cont.effect_flg,
+                bis_cont.cont_type_cd
+         from ods.ods_pl_powerdes_bis_sales_day_dt BIS_SALES_DAY
+                  left join ods.ods_pl_powerdes_bis_cont_dt bis_cont
+                            on BIS_SALES_DAY.bis_cont_id = bis_cont.bis_cont_id
+     ) t
+         left join
+     (
+         select bis_cont.bis_project_id,
+                OUT_CONT_ID                                                       BIS_CONT_ID,
+                from_unixtime(unix_timestamp(SALE_YMD, 'yyyymmdd'), 'yyyy-mm-dd') SALES_DATE,
+                from_unixtime(unix_timestamp(SALE_YMD, 'yyyymmdd'), 'yyyy-mm')    SALES_MONTH,
+                CONFIRM_AMOUNT                                                    SALES_MONEY,
+                bis_cont.bis_shop_id,
+                bis_cont.effect_flg,
+                bis_cont.cont_type_cd
+         from ods.ods_pl_pms_bis_db_mng_sale_amount_day_dt mng_sale_amount_day
+                  left join ods.ods_pl_powerdes_bis_cont_dt bis_cont
+                            on mng_sale_amount_day.out_cont_id = bis_cont.bis_cont_id
+     ) t1 on t.bis_project_id = t1.bis_project_id and t.bis_cont_id = t1.BIS_CONT_ID and
+             substr(t.SALES_DATE, 0, 10) = t1.SALES_DATE and t.bis_shop_id = t1.bis_shop_id;

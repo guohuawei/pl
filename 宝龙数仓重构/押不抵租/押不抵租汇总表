@@ -1,0 +1,68 @@
+insert OVERWRITE table dws.dws_bis_cover_rent_big_dt partition (dt = '${hiveconf:nowdate}')
+select t.area_name,              -- 区域名称
+       t.area_id,                -- 区域id
+       t.bis_project_id,         -- 项目id
+       t.short_name,             -- 项目名称
+       t.bis_cont_id,            -- 合同id
+       t.BIS_SHOP_ID,            -- 商家id(品牌)
+       t.NAME_CN,                -- 商家名称
+       t.store_type,             -- 物业类型（1：购物中心 2:商业街 3：住宅 4：住宅底商 5：写字楼）
+       t.rent_square,            -- 计租面积
+       t1.blance,                -- 余额(租金履约保证金余额 + 综合管理履约保证金余额)
+       t2.owe_qz,                -- 权责欠费（租金+物管）
+       t2.owe_cont,              -- 合同欠费（租金+物管)
+       t1.zj_bz_money,           -- 租金履约保证金余额
+       t1.zh_bz_money,           -- 综合管理履约保证金余额
+       t2.rent_owe_qz,           -- 租金权责欠费
+       t2.mgr_owe_qz,            -- 物管权责欠费
+       t2.rent_owe_cont,         -- 租金应收月(合同)欠费
+       t2.mgr_owe_cont,          -- 物管应收月（合同）欠费
+       t.effect_flg,             -- 合同状态
+       t.IS_GUARANTEE,           -- 合同是否保函 0不是 1是
+       t.pay_way,                -- 租金方式(1、固定租金；2、提成租金；3、两者取高；4、其他)
+       t.query_date year_month1, -- 年月
+       t.cont_no,                -- 合同号
+       current_date              -- ETL时间
+from dwd.dwd_bis_cover_rent_big_dt t
+         left join
+     (
+         select table1.bis_project_id,
+                table1.query_date,
+                table1.bis_cont_id,
+                sum(nvl(table1.blance, 0))
+                    over (partition by table1.bis_project_id,table1.bis_cont_id order by table1.bis_project_id,table1.bis_cont_id,table1.query_date) as blance,
+                sum(nvl(table1.zj_bz_money, 0))
+                    over (partition by table1.bis_project_id,table1.bis_cont_id order by table1.bis_project_id,table1.bis_cont_id,table1.query_date) as zj_bz_money,
+                sum(nvl(table1.zh_bz_money, 0))
+                    over (partition by table1.bis_project_id,table1.bis_cont_id order by table1.bis_project_id,table1.bis_cont_id,table1.query_date) as zh_bz_money
+         from dwd.dwd_bis_cover_rent_big_dt table1
+         where table1.dt = date_format(current_date, 'yyyyMMdd') -- and table1.bis_cont_id ='8a7b85965841d15301584d753230053c'
+         -- order by table1.query_date
+     ) t1 on t.bis_project_id = t1.bis_project_id and t.bis_cont_id = t1.bis_cont_id and t.query_date = t1.query_date
+         left join
+     (
+         select table1.bis_project_id,
+                table1.query_date,
+                table1.bis_cont_id,
+                sum(nvl(table1.owe_qz, 0))
+                    over (partition by table1.bis_project_id,table1.bis_cont_id order by table1.bis_project_id,table1.bis_cont_id,table1.query_date) as owe_qz,        -- 权责欠费（租金+物管）
+                sum(nvl(table1.owe_cont, 0))
+                    over (partition by table1.bis_project_id,table1.bis_cont_id order by table1.bis_project_id,table1.bis_cont_id,table1.query_date) as owe_cont,      -- 合同欠费（租金+物管)
+                sum(nvl(table1.rent_owe_qz, 0))
+                    over (partition by table1.bis_project_id,table1.bis_cont_id order by table1.bis_project_id,table1.bis_cont_id,table1.query_date) as rent_owe_qz,   -- 租金权责欠费
+                sum(nvl(table1.mgr_owe_qz, 0))
+                    over (partition by table1.bis_project_id,table1.bis_cont_id order by table1.bis_project_id,table1.bis_cont_id,table1.query_date) as mgr_owe_qz,    -- 物管权责欠费
+                sum(nvl(table1.rent_owe_cont, 0))
+                    over (partition by table1.bis_project_id,table1.bis_cont_id order by table1.bis_project_id,table1.bis_cont_id,table1.query_date) as rent_owe_cont, -- 租金应收月(合同)欠费
+                sum(nvl(table1.mgr_owe_cont, 0))
+                    over (partition by table1.bis_project_id,table1.bis_cont_id order by table1.bis_project_id,table1.bis_cont_id,table1.query_date) as mgr_owe_cont   -- 物管应收月（合同）欠费
+         from dwd.dwd_bis_cover_rent_big_dt table1
+         where table1.dt = date_format(current_date, 'yyyyMMdd') -- and table1.bis_cont_id ='8a7b85965841d15301584d753230053c'
+         -- order by table1.query_date
+     ) t2 on t.bis_project_id = t2.bis_project_id and t.bis_cont_id = t2.bis_cont_id and t.query_date = t2.query_date
+where t.dt = date_format(current_date, 'yyyyMMdd');
+
+
+
+
+

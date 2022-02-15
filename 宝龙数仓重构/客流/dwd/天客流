@@ -1,0 +1,25 @@
+
+-- mongo天客流
+insert OVERWRITE table dwd.dwd_mongodb_passenger_flow_day_big_dt partition (dt='${hiveconf:nowdate}')
+select
+    get_json_object(content,'$._id'),
+    get_json_object(content,'$.ParentId'),
+    get_json_object(content,'$.MallName'),
+    get_json_object(content,'$.SiteType'),
+    get_json_object(content,'$.OutSum'),
+    get_json_object(content,'$.SiteName'),
+    get_json_object(content,'$.user-agent'),
+    get_json_object(content,'$.ModifyTime'),
+    get_json_object(content,'$.CountDate'),
+    get_json_object(content,'$.SiteKey'),
+    get_json_object(content,'$.MallId'),
+    get_json_object(content,'$.user-ip'),
+    get_json_object(content,'$.TimeStamp'),
+    get_json_object(content,'$.client-time'),
+    get_json_object(content,'$.InSum'),
+    get_json_object(content,'$.Sign'),
+    get_json_object(content,'$.Nonce'),
+    get_json_object(content,'$.SysTime'),
+    get_json_object(content,'$.SiteId'),
+    get_json_object(content,'$.sys-time')
+from ods.ods_mongodb_passenger_flow_day;

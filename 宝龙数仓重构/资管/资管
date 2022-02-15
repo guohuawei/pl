@@ -1,0 +1,244 @@
+select bis_project.bis_project_id, -- 项目id
+       bis_project.short_name,     -- 项目简称
+       bis_project.project_name,   -- 项目名称
+       bis_project.open_date,      -- 项目开业日期
+       bis_project.stage,          -- 项目阶段(1:筹备期 2:培育期 3:稳定期 4:调改期)
+       bis_project.org_cd,         -- 组织机构CD
+       bis_store.equity_nature,    -- 铺位产权性质(1:自持 2:可售 3:自持/销售 4:委托管理)
+       bis_store.is_assess,        -- 铺位是否考核(Y:为考核)
+       bis_store.rent_square,      -- 铺位计租面积
+       bis_store.bis_store_id,     -- 铺位id
+       bis_store.bis_cont_id,      -- 合同id
+       bis_cont.cont_start_date,   -- 合同开始时间
+       bis_cont.cont_end_date,     -- 合同结束时间
+       bis_must.must_money,        -- 合同期内总租金
+       t6.store_price,             -- 一铺一价租金
+       t5.complete_date,           -- 合同网批通过时间
+       t3.attach_num,              -- 合同双签数量(双签数量>0 才是双签合同)
+       t3.created_date,            -- 合同双签完成日期
+       t7.COMPLETE_DATE,           -- 进场装修网批通过时间
+       t8.primary_forms,           -- 一级液态
+       concat('/app/show.action?fileName=', t1.file_name, '&id=', t1.app_attach_file_id, '&bizModuleCd=',
+              t1.biz_module_cd),   -- 品牌落位图
+       concat('/app/show.action?fileName=', t2.file_name, '&id=', t2.app_attach_file_id, '&bizModuleCd=',
+              t2.biz_module_cd)    -- 业态图
+from ods.ods_pl_powerdes_bis_store_dt bis_store
+         left join ods.ods_pl_powerdes_bis_project_dt bis_project
+                   on bis_store.bis_project_id = bis_project.bis_project_id
+         left join ods.ods_pl_powerdes_app_attach_file_dt t1 on t1.BIZ_ENTITY_ID = bis_project.BRAND_FALL_BITMAP
+         left join ods.ods_pl_powerdes_app_attach_file_dt t2 on t2.BIZ_ENTITY_ID = bis_project.LAYOUT_DIAGRAM
+         left join
+     (
+         -- 合同铺位打散
+         SELECT tmp.bis_cont_id,
+                bis_store_id,
+                cont_end_date,
+                cont_start_date,
+                bis_project_id,
+                bis_shop_id
+         FROM (
+                  SELECT bis_cont_id,
+                         cont_end_date,
+                         cont_start_date,
+                         bis_store_ids,
+                         bis_project_id,
+                         bis_shop_id
+                  FROM ods.ods_pl_powerdes_bis_cont_dt
+                  where effect_flg <> 'D'
+              ) tmp LATERAL VIEW explode(split(bis_store_ids, ',')) tmp1 AS bis_store_id
+     ) bis_cont on bis_store.bis_project_id = bis_cont.bis_project_id
+         and bis_cont.bis_store_id = bis_store.bis_store_id
+
+         left join
+     (
+         select must.bis_project_id,                                 -- 项目id
+                must.bis_cont_id,                                    -- 合同id
+                sum(mustMoney) + sum(nvl(adjMoney, 0)) as must_money -- 应收租金
+         from (
+                  SELECT a.bis_project_id,
+                         a.bis_cont_id,
+                         a.qz_year_month,
+                         sum(a.money) as mustMoney
+                  FROM ods.ods_pl_powerdes_bis_must2_dt a
+                  where a.must_type = 1
+                    and a.is_show = 1
+                    and a.is_delete = 0
+                  group by a.bis_project_id, a.bis_cont_id, a.qz_year_month
+              ) must
+                  left join
+              (
+                  SELECT b.bis_cont_id,
+                         b.qz_year_month,
+                         sum(b.adjust_money) as adjMoney
+                  FROM ods.ods_pl_powerdes_bis_mf_adjust_dt b
+                  where b.is_del = 1
+                    and b.fee_type = 1
+                  group by b.bis_cont_id, b.qz_year_month
+              ) adj
+              on must.bis_cont_id = adj.bis_cont_id and must.qz_year_month = adj.qz_year_month
+         group by must.bis_project_id, must.bis_cont_id
+     ) bis_must on bis_cont.bis_cont_id = bis_must.bis_cont_id and bis_cont.bis_project_id = bis_must.bis_project_id
+         left join
+     (
+         -- 合同网批完成时间
+         select bis_cont_id,
+                complete_date,
+                type
+         from ods.ods_pl_powerdes_res_approve_content_result_dt
+         where type = '2'
+     ) t5
+     on BIS_CONT.bis_cont_id = t5.bis_cont_id
+         left join
+     (
+         select BIS_CONT.BIS_CONT_ID,
+                sum(BIAOZHUNRENT1 + BIAOZHUNRENT2 + BIAOZHUNRENT3 + BIAOZHUNRENT4 +
+                    BIAOZHUNRENT5) as store_price -- 一铺一价租金
+         from ods.ods_pl_powerdes_bis_cont_dt BIS_CONT
+                  inner join ods.ods_pl_powerdes_bis_commerce_intention_info_dt BIS_COMMERCE_INTENTION_INFO
+                             on BIS_CONT.res_approve_id1 = BIS_COMMERCE_INTENTION_INFO.res_approve_info_id
+         group by BIS_CONT.BIS_CONT_ID
+     ) t6 on bis_cont.bis_cont_id = t6.bis_cont_id
+         left join
+     (
+         select distinct p.bis_project_id,                                                     -- 项目id
+                         p.short_name,                                                         -- 项目名,
+                         a.bis_cont_id,                                                        -- 合同id
+                         a.attach_num,                                                         -- 上传合同签署件数,
+                         a.created_date,                                                       -- 上传合同签署时间,
+                         a.cont_no,                                                            -- 合同号,
+                         a.contract_no,                                                        -- 合同文本号,
+
+                         case a.cont_type_cd
+                             when '1' then '自持'
+                             when '1' then '2'
+                             when '1' then '销售'
+                             when '1' then '3'
+                             when '1' then '多经'
+                             else null end,                                                    --  合同类型,
+                         bs.store_no,                                                          --铺位号,
+                         bs.rent_square,                                                       -- 计租面积,
+                         a.cont_start_date,                                                    -- 合同开始时间,
+                         a.cont_end_date,                                                      -- 合同结束时间,
+                         a.cont_to_fail_date,                                                  -- 合同解约时间,
+                         --case when (bs.rent_status='1' or bs.bis_store_id is null) then '已租' else '未租' end 租赁状态,
+                         case bs.is_assess when 'Y' then '考核' when 'N' then '不考核' else '' end, -- 是否考核, --是否考核
+                         bs.bis_store_id,
+                         a.bis_store_ids
+         from (
+                  select t1.bis_cont_id,
+                         t1.bis_store_ids,
+                         t1.bis_store_nos,
+                         t1.bis_project_id,
+                         t1.contract_templet_info_id2,
+                         t2.contract_templet_info_id,
+                         t1.cont_no,
+                         t1.status_cd,
+                         t2.contract_no,
+                         t1.effect_flg,
+                         t1.cont_start_date,
+                         t1.cont_end_date,
+                         t1.cont_to_fail_date,
+                         t1.is_create_rent,
+                         t1.management_forms,
+                         b.attach_num,
+                         b.created_date,
+                         t1.cont_type_cd
+                  from ods.ods_pl_powerdes_bis_cont_dt t1
+                           left join ods.ods_pl_powerdes_sc_contract_templet_info_dt t2
+                                     on t1.contract_templet_info_id2 = t2.contract_templet_info_id
+                           left join
+                       (
+                           select count(*)             attach_num,
+                                  t3.contract_templet_info_id,
+                                  t3.attach_type_cd,
+                                  max(t3.created_date) created_date
+                           from ods.ods_pl_powerdes_sc_contract_info_attach_dt t3
+                           where t3.attach_type_cd = '990'
+                           group by t3.contract_templet_info_id, t3.attach_type_cd
+                       ) b
+                       on t2.contract_templet_info_id = b.contract_templet_info_id
+                  where t1.cont_type_cd in ('1', '2', '3')
+                    and t1.status_cd in ('0', '1', '2', '3', '5')
+                  --and t1.EFFECT_FLG = 'Y'
+                  --and sysdate between t1.cont_start_date and t1.cont_end_date
+                  --and t1.bis_store_nos is not null
+              ) a
+                  left join ods.ods_pl_powerdes_bis_store_dt bs
+                            on bs.bis_store_id =
+                               if(INSTR(a.bis_store_ids, ',') > 0,
+                                  substr(a.bis_store_ids, 0, INSTR(a.bis_store_ids, ',') - 1),
+                                  a.bis_store_ids)
+                  left join ods.ods_pl_powerdes_bis_project_dt p on p.bis_project_id = a.bis_project_id
+         where -- a.bis_project_id in ('C0689QWERTY24123480EBEB52D6E002X', '6D7E1C7AFAFB43E986670A81CF132446')
+               --((a.contract_no is not null and a.attach_num > 0) or a.contract_no is null)
+               --and bs.status_cd = '1'
+               a.cont_no is not null
+         order by p.short_name, bs.store_no
+     ) t3 on BIS_CONT.bis_project_id = t3.bis_project_id and BIS_CONT.bis_cont_id = t3.bis_cont_id
+
+         left join
+     (
+         -- 进场装修网批通过时间
+         select bis_cont_id,
+                complete_date,
+                type
+         from ods.ods_pl_powerdes_res_approve_content_result_dt
+         where type = '1'
+     ) t7 on BIS_CONT.bis_cont_id = t7.bis_cont_id
+         left join
+     (
+         select t.bis_project_id,
+                t.bis_cont_id,
+                t.bis_shop_id,
+                t.primary_forms
+         from (
+                  select BIS_CONT.bis_project_id,
+                         BIS_CONT.bis_cont_id,
+                         BIS_CONT.bis_shop_id,
+                         case
+                             when BIS_SHOP_SORT_NEW.SORT_TYPE = 1 then BIS_SHOP_SORT_NEW.SORT_NAME
+                             else null end as primary_forms -- 一级业态
+                  from ods.ods_pl_powerdes_bis_cont_dt bis_cont
+                           left join ods.ods_pl_powerdes_bis_shop_dt bis_shop
+                                     on BIS_CONT.BIS_SHOP_ID = BIS_SHOP.BIS_SHOP_ID
+                           left join ods.ods_pl_powerdes_bis_shop_sort_new_rel_dt BIS_SHOP_SORT_NEW_REL
+                                     on BIS_SHOP.BIS_SHOP_ID = BIS_SHOP_SORT_NEW_REL.BIS_SHOP_ID
+                           left join ods.ods_pl_powerdes_bis_shop_sort_new_dt BIS_SHOP_SORT_NEW
+                                     on BIS_SHOP_SORT_NEW_REL.BIS_SHOP_SORT_ID = BIS_SHOP_SORT_NEW.BIS_SHOP_SORT_ID
+                  where BIS_SHOP.delete_bl <> '1'
+                    and BIS_SHOP.IS_NEW = '1'
+              ) t
+         where t.primary_forms is not null
+         group by t.bis_project_id, t.bis_cont_id, t.bis_shop_id, t.primary_forms
+     ) t8 on bis_cont.bis_cont_id = t8.bis_cont_id
+where bis_store.equity_nature = '1'
+  and bis_store.is_delete = 'N'
+  and bis_store.status_cd = '1';
+
+
+
+select t.bis_project_id,
+       t.bis_cont_id,
+       count(1)
+from (
+         select BIS_CONT.bis_project_id,
+                BIS_CONT.bis_cont_id,
+                BIS_CONT.bis_shop_id,
+                case
+                    when BIS_SHOP_SORT_NEW.SORT_TYPE = 1 then BIS_SHOP_SORT_NEW.SORT_NAME
+                    else null end as primary_forms -- 一级业态
+         from ods.ods_pl_powerdes_bis_cont_dt bis_cont
+                  left join ods.ods_pl_powerdes_bis_shop_dt bis_shop
+                            on BIS_CONT.BIS_SHOP_ID = BIS_SHOP.BIS_SHOP_ID
+                  left join ods.ods_pl_powerdes_bis_shop_sort_new_rel_dt BIS_SHOP_SORT_NEW_REL
+                            on BIS_SHOP.BIS_SHOP_ID = BIS_SHOP_SORT_NEW_REL.BIS_SHOP_ID
+                  left join ods.ods_pl_powerdes_bis_shop_sort_new_dt BIS_SHOP_SORT_NEW
+                            on BIS_SHOP_SORT_NEW_REL.BIS_SHOP_SORT_ID = BIS_SHOP_SORT_NEW.BIS_SHOP_SORT_ID
+         where BIS_SHOP.delete_bl <> '1'
+           and BIS_SHOP.IS_NEW = '1'
+     ) t
+where t.primary_forms is not null
+group by t.bis_project_id,t.bis_cont_id
+having count(bis_cont_id) > 1;
+
+

@@ -1,0 +1,19 @@
+select trim(t1.project_id),                                                                            -- 项目id
+       mp.register_time,                                                                               -- 会员注册时间
+       t1.uid,                                                                                         -- 会员id
+       case
+           when t1.level in (3, 4, 5) then '金龙卡'
+           when t1.level = 2 then '银龙卡'
+           when t1.level = 1 then '龙卡' end as                                            member_level, -- 会员级别
+       t1.is_man_merber,                                                                               -- 是否主级会员
+       t1.origin_level,                                                                                -- '记录会员等级准卡之前的等级'
+       t1.create_time,
+       mp.sex,                                                                                         -- 性别 1、男，2、女，3、其他
+       if(datediff(CURRENT_DATE, CONCAT(substr(CURRENT_DATE, 0, 4), substr(substr(mp.birth_date, 0, 10), 5, 7))) >= 0,
+          (substr(CURRENT_DATE, 0, 4) - substr(substr(mp.birth_date, 0, 10), 0, 4)),
+          (substr(CURRENT_DATE, 0, 4) - substr(substr(mp.birth_date, 0, 10), 0, 4) - 1)) age,          -- 年龄
+       mp.register_from,                                                                               -- 主卡会员注册来源，1 微信、2支付宝
+       current_date                                                                                    -- ETL时间
+from ods.ods_pl_bl_member_level_dt t1
+         LEFT JOIN ods.ods_pl_bl_member_profile_dt mp ON mp.id = t1.uid -- and trim(t1.project_id) = trim(mp.project_id)
+where t1.is_member = '1';

@@ -1,0 +1,102 @@
+-- mongo小时客流
+insert OVERWRITE table dwd.dwd_mongodb_passenger_flow_hour_big_dt partition (dt = '${hiveconf:nowdate}')
+select
+    id,
+    ParentId,
+    MallName,
+    SiteType,
+    SiteName,
+    user_agent,
+    SiteKey,
+    MallId,
+    user_ip,
+    time_stamp,
+    ModifyTime,
+    CountDate,
+    InSum,
+    OutSum,
+    client_time,
+    Sign,
+    Nonce,
+    SysTime,
+    SiteId,
+    sys_time
+from (
+         select id,
+                ParentId,
+                MallName,
+                SiteType,
+                SiteName,
+                user_agent,
+                SiteKey,
+                MallId,
+                user_ip,
+                time_stamp,
+                ModifyTime,
+                CountDate,
+                InSum,
+                OutSum,
+                client_time,
+                Sign,
+                Nonce,
+                SysTime,
+                SiteId,
+                sys_time,
+                row_number()
+                        over (partition by MallName,MallId,SiteKey,SiteName,CountDate order by MallName,MallId,SiteKey,SiteName,CountDate desc) rank2
+         from (
+                  select id,
+                         ParentId,
+                         MallName,
+                         SiteType,
+                         SiteName,
+                         user_agent,
+                         SiteKey,
+                         MallId,
+                         user_ip,
+                         time_stamp,
+                         get_json_object(replace(a_json, "\\", ""), '$.ModifyTime') as                                                         ModifyTime,
+                         get_json_object(replace(a_json, "\\", ""), '$.CountDate')  as                                                         CountDate,
+                         get_json_object(replace(a_json, "\\", ""), '$.InSum')      as                                                         InSum,
+                         get_json_object(replace(a_json, "\\", ""), '$.OutSum')     as                                                         OutSum,
+                         client_time,
+                         Sign,
+                         Nonce,
+                         SysTime,
+                         SiteId,
+                         sys_time,
+                         row_number()
+                                 over (partition by SiteType,SiteName,MallId,SysTime,get_json_object(replace(a_json, "\\", ""), '$.CountDate')
+                                     order by SiteType,SiteName,MallId,get_json_object(replace(a_json, "\\", ""), '$.CountDate'),SysTime desc) rank
+                  from (
+                           select get_json_object(content, '$._id')         as id,
+                                  get_json_object(content, '$.ParentId')    as ParentId,
+                                  get_json_object(content, '$.MallName')    as MallName,
+                                  get_json_object(content, '$.SiteType')    as SiteType,
+                                  get_json_object(content, '$.SiteName')    as SiteName,
+                                  get_json_object(content, '$.user-agent')  as user_agent,
+                                  get_json_object(content, '$.SiteKey')     as SiteKey,
+                                  get_json_object(content, '$.MallId')      as MallId,
+                                  get_json_object(content, '$.user-ip')     as user_ip,
+                                  get_json_object(content, '$.TimeStamp')   as Time_Stamp,
+                                  split(regexp_replace(regexp_extract(content, '(\\[)(.*?)(\\])', 2), '\\},\\{',
+                                                       '\\}|\\{'),
+                                        '\\|')                              as a_list,
+                                  get_json_object(content, '$.client-time') as client_time,
+                                  get_json_object(content, '$.Sign')        as Sign,
+                                  get_json_object(content, '$.Nonce')       as Nonce,
+                                  get_json_object(content, '$.SysTime')     as SysTime,
+                                  get_json_object(content, '$.SiteId')      as SiteId,
+                                  get_json_object(content, '$.sys-time')    as sys_time,
+                                  get_json_object(content, '$.Data')        as Data
+                           from ods.ods_mongodb_passenger_flow_hour
+                           WHERE get_json_object(content, '$.Data') <> '[]'
+                       ) a
+                           lateral view explode(a_list) a_list_tab as a_json
+              ) t
+         where rank = 1
+     )t2 where rank2 = 1;
+
+
+
+

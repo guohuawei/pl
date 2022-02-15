@@ -1,0 +1,144 @@
+select t2.area_name,                   -- 区域名称
+       t2.id,                          -- 区域id
+       t1.year,                        -- 年
+       t1.month,                       -- 月
+       t1.year_month1,                 -- 年月 2021-12
+       t1.bis_project_id,              -- 项目id
+       t1.short_name,                  -- 项目名称
+       round(t5.month_total_money, 2), -- 项目每个一级业态（考核铺位）月销售额
+       round(t6.total_rent_money, 2),  -- 项目每个一级业态（考核铺位）月租金权责应收总额
+       t5.store_type,                  -- 物业类型（1：购物中心 2:商业街 3：住宅 4：住宅底商 5：写字楼）
+       t1.primary_forms                -- 一级业态
+
+
+from (
+         select distinct bis_project.bis_project_id,
+                         bis_project.short_name,
+                         t.primary_forms,
+                         year,
+                         month,
+                         year_month1
+         from dim.dim_pl_date,
+              ods.ods_pl_powerdes_bis_project_dt bis_project,
+              (
+                  select bis_cont.bis_project_id,             -- 项目id
+                         bis_shop_primary_forms.primary_forms -- 项目下的一级业态
+                  from ods.ods_pl_powerdes_bis_cont_dt bis_cont
+                           left join ods.ods_pl_powerdes_bis_project_dt bis_project
+                                     on bis_cont.bis_project_id = bis_project.bis_project_id
+                           left join dwd.dwd_bis_shop_primary_forms_big_dt bis_shop_primary_forms
+                                     on bis_cont.bis_shop_id = bis_shop_primary_forms.bis_shop_id
+                  where bis_shop_primary_forms.dt = date_format(current_date, 'yyyyMMdd')
+                    and bis_cont.effect_flg <> 'D'
+                    and bis_project.is_business_project = '1'
+                    and bis_project.oper_status = '2'
+                  group by bis_cont.bis_project_id, bis_shop_primary_forms.primary_forms
+              ) t
+         where year between '2010' and '2030'
+           and bis_project.is_business_project = '1'
+           and oper_status = '2'
+     ) t1
+         left join
+     (
+         select t3.bis_project_id,                     -- 项目id
+                t3.sales_month,                        -- 销售年月,
+                store_type,                            -- 物业类型（1：购物中心 2:商业街 3：住宅 4：住宅底商 5：写字楼）
+                t8.primary_forms,                      -- 一级业态
+                sum(t3.total_money) month_total_money, -- 月销售总额（考核铺位）
+                sum(t3.rent_square) month_rent_square  -- 当月考核铺位合同计租面积之和
+
+         from (
+                  -- 考核铺位
+                  SELECT BIS_CONT.BIS_CONT_ID,
+                         bis_cont.bis_shop_id,
+                         bis_cont.bis_project_id
+                  FROM ods.ods_pl_powerdes_bis_store_dt bis_store
+                           inner join ods.ods_pl_powerdes_bis_cont_dt bis_cont
+                                      on BIS_STORE.BIS_STORE_ID = BIS_CONT.BIS_STORE_IDS and BIS_CONT.EFFECT_FLG <> 'D'
+                  where bis_store.is_delete = 'N'
+                    -- /*考核商铺*/
+                    and bis_store.IS_ASSESS = 'Y'
+                    and bis_store.status_cd = '1' -- 有效铺位
+              ) t2
+                  inner join
+              (
+                  -- 没有区分考核不考核 项目下每个合同每年每月的销售额
+                  select t4.bis_project_id,
+                         t4.bis_cont_id,
+                         t4.total_money,
+                         t4.sales_month,
+                         bis_cont.rent_square,
+                         bis_cont.store_type -- 物业类型（1：购物中心 2:商业街 3：住宅 4：住宅底商 5：写字楼）
+                  from (
+                           select bis_project_id,
+                                  bis_cont_id,
+                                  sum(sales_money) as total_money, -- 月销售额
+                                  sales_month
+                           from dwd.dwd_bis_sales_day_big_dt bis_sales_day
+                           where BIS_SALES_DAY.dt = date_format(current_date, 'yyyyMMdd')
+                           group by bis_project_id, bis_cont_id, sales_month
+                       ) t4
+                           left join ods.ods_pl_powerdes_bis_cont_dt bis_cont
+                                     on t4.bis_project_id = bis_cont.bis_project_id and
+                                        t4.bis_cont_id = bis_cont.bis_cont_id and bis_cont.effect_flg <> 'D'
+              ) t3
+              on t2.bis_project_id = t3.bis_project_id and t2.bis_cont_id = t3.bis_cont_id
+                  left join
+              (
+                  select *
+                  from dwd.dwd_bis_shop_primary_forms_big_dt
+                  where dt = date_format(current_date, 'yyyyMMdd')
+              ) t8 on t2.bis_shop_id = t8.bis_shop_id
+         group by t3.bis_project_id, t3.sales_month, t3.store_type, t8.primary_forms
+     ) t5 on t1.bis_project_id = t5.bis_project_id and t1.year_month1 = t5.sales_month and
+             t1.primary_forms = t5.primary_forms
+         left join
+     (
+         select bis_must2.bis_project_id,
+                qz_year_month,
+                t8.primary_forms,              -- 一级业态
+                store_type,                    -- 物业类型（1：购物中心 2:商业街 3：住宅 4：住宅底商 5：写字楼）
+                sum(MONEY) as total_rent_money --（考核铺位）项目月租金权责应收总金额
+         from ods.ods_pl_powerdes_bis_must2_dt bis_must2
+                  left join ods.ods_pl_powerdes_bis_cont_dt bis_cont
+                            on bis_must2.bis_cont_id = bis_cont.bis_cont_id and bis_cont.effect_flg <> 'D'
+                  left join
+              (
+                  select *
+                  from dwd.dwd_bis_shop_primary_forms_big_dt
+                  where dt = date_format(current_date, 'yyyyMMdd')
+              ) t8 on bis_cont.bis_shop_id = t8.bis_shop_id
+         where MUST_TYPE = '1'
+           and IS_DELETE = '0'
+           and bis_must2.BIS_CONT_ID in (
+             -- 考核铺位
+             SELECT BIS_CONT.BIS_CONT_ID
+             FROM ods.ods_pl_powerdes_bis_store_dt bis_store
+                      inner join ods.ods_pl_powerdes_bis_cont_dt bis_cont
+                                 on BIS_STORE.BIS_STORE_ID = BIS_CONT.BIS_STORE_IDS and BIS_CONT.EFFECT_FLG <> 'D'
+             where bis_store.is_delete = 'N'
+               -- /*考核商铺*/
+               and bis_store.IS_ASSESS = 'Y'
+               and bis_store.status_cd = '1' -- 有效铺位
+         )
+         group by bis_must2.bis_project_id, bis_must2.QZ_YEAR_MONTH, store_type, t8.primary_forms
+     ) t6
+     on t1.year_month1 = t6.qz_year_month and t5.store_type = t6.store_type and
+        t1.bis_project_id = t6.bis_project_id and t1.primary_forms = t6.primary_forms
+         left join
+     (
+         select bs_area.id,
+                bs_area.area_name,  -- 区域名称
+                bs_mall.area,
+                bs_mall.out_mall_id -- 项目id
+         from ods.ods_pl_pms_bis_db_bs_area_dt bs_area
+                  left join ods.ods_pl_pms_bis_db_bs_mall_dt bs_mall
+                            on bs_area.id = bs_mall.area
+         where bs_mall.is_del = '0'
+           and stat = '2'
+     ) t2 on t1.bis_project_id = t2.out_mall_id;
+
+
+
+
+

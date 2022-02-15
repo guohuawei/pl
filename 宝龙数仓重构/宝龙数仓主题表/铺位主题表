@@ -1,0 +1,48 @@
+select t2.area_name,                    -- 项目区域
+       t2.id,                           -- 区域id
+       bis_project.stage,               -- 项目阶段(1:筹备期 2:培育期 3:稳定期 4；调改期)
+       bis_project.province,            -- 项目所属省份
+       BIS_PROJECT.PROJECT_NAME,        -- 项目名称
+       bis_project.short_name,          -- 项目简称
+       bis_project.bis_project_id,      -- 项目id
+       bis_project.is_business_project, -- 是否是商业项目(1:商业项目)
+       bis_project.oper_status,         -- 项目状态（1：在建 2：在营）
+       bis_project.open_date,           -- 项目开业时间
+       bis_store.bis_store_id,          -- 铺位id
+       bis_store.store_no,              -- 铺位号
+       bis_floor.charge_type,           -- 物业类型(购物中心-1、商业街-2、住宅-3、住宅底商-4、写字楼-5
+       bis_floor.bis_floor_id,          -- 楼层id
+       bis_floor.floor_num,             -- 楼层名称
+       bis_floor.building_id,           -- 楼栋id
+       bis_floor.building_num,          -- 楼栋名称
+       bis_store.rent_square,           -- 铺位计租面积
+       bis_store.is_assess,             -- 铺位是否考核(Y为考核)
+       bis_store.equity_nature,         -- 铺位产权性质(1 自持 2 可售 3自持 销售 4 委托管理)
+       bis_store.rent_status,           -- 租赁性质(1:已租 2:未租)
+       bis_store.management_status,     -- 是否返祖（1:返租2:不返租)
+       bis_store.STORE_POSITION,        -- 商铺定位(1主力店-百货 2主力店-超市 3主力店-影院 5大租户 4次主力店 6中租户 7小租户 8商业街')
+       bis_store.LAST_DATE,             -- 铺位返租到期日期
+       bis_store.is_delete,             -- 是否删除：Y已删除；N未删除
+       bis_store.status_cd,             -- 商铺是否有效：0，无效；1有效
+       bis_store.ISSUING_LAYOUT_CD,     -- 签批业态
+       bis_store.SQUARE_EQUITY,         -- 建筑面积
+       bis_store.effect_date,           -- 铺位生效时间
+       bis_store.created_date,          -- 铺位创建时间
+       current_date                     -- ETL时间
+from ods.ods_pl_powerdes_bis_project_dt bis_project
+         left join ods.ods_pl_powerdes_bis_store_dt bis_store
+                   on bis_store.BIS_PROJECT_ID = BIS_PROJECT.BIS_PROJECT_ID
+         left join
+     (
+         select bs_area.id,
+                bs_area.area_name,  -- 区域名称
+                bs_mall.area,
+                bs_mall.out_mall_id -- 项目id
+         from ods.ods_pl_pms_bis_db_bs_area_dt bs_area
+                  left join ods.ods_pl_pms_bis_db_bs_mall_dt bs_mall
+                            on bs_area.id = bs_mall.area
+     ) t2 on bis_project.bis_project_id = t2.out_mall_id
+         left join ods.ods_pl_powerdes_bis_floor_dt bis_floor
+                   on bis_store.bis_floor_id = bis_floor.bis_floor_id and
+                      bis_store.bis_project_id = bis_floor.bis_project_id
+

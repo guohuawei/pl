@@ -1,0 +1,70 @@
+select table1.bis_project_id,                     -- 项目id
+       table1.PROJECT_NAME,                       -- 项目名称
+       fct.bis_fact_id,                           -- 实收id
+       fct.bis_must_id,                           -- 应收id
+       table1.bis_cont_id,                        -- 合同id
+       table1.BIS_SHOP_ID,                        -- 商家id(品牌)
+       table1.NAME_CN,                            -- 商家名称
+       table1.store_type,                         -- 物业类型（1：购物中心 2:商业街 3：住宅 4：住宅底商 5：写字楼）
+       fct.qz_year_month,                         -- 实收权责月
+       fct.fact_type,                             -- 费项类型
+       PMS_FIN_CHARGE_ITEM_DICT.CHARGE_ITEM_NAME, -- 费项中文名称
+       PMS_FIN_CHARGE_ITEM_DICT.CHARGE_ITEM_TYPE, -- 收费类型
+       nvl(fct.fact_money, 0) fact_money,         -- 实收金额
+       fct.fact_date,                             -- 实收日期
+       fct.MUST_RENT_LAST_PAY_DATE,               -- 应收日期
+       fct.billing_period_begin,                  -- 账期开始时间
+       fct.billing_period_end,                    -- 账期结束时间
+       table1.bis_store_nos,                      -- 铺位号
+       table1.company_name,                       -- 铺位承租方
+       table1.cont_no,                            -- 合同号
+       current_date                               -- ETL时间
+
+from
+    -- 合同表
+    (
+        select BIS_CONT.bis_project_id,
+               BIS_CONT.bis_cont_id,
+               BIS_CONT.bis_shop_id,
+               bis_cont.cont_no,
+               bis_cont.bis_store_nos,
+               bis_cont.STORE_TYPE,                            -- 物业类型（1：购物中心 2:商业街 3：住宅 4：住宅底商 5：写字楼）
+               case
+                   when bis_cont.bis_shop_name is null then bis_shop.NAME_CN
+                   else bis_cont.bis_shop_name end as NAME_CN, -- 结果表取合同表中品牌名称，如合同表中品牌名称为空取品牌表中名称，  如全部为空  及为空
+               bis_project.PROJECT_NAME,
+               case
+                   when bis_cont.CONT_TYPE_CD = 3 then leasee.leasee_name
+                   when bis_cont.CONT_TYPE_CD = 2 and bis_shop_conn.PART_NAME is null then leasee.leasee_name
+                   when bis_cont.CONT_TYPE_CD = 2 and leasee.leasee_name is null then bis_shop_conn.PART_NAME
+                   else bis_shop_conn.PART_NAME end   company_name
+        from ods.ods_pl_powerdes_bis_cont_dt bis_cont
+                 LEFT JOIN ods.ods_pl_powerdes_bis_shop_conn_dt bis_shop_conn
+                           ON bis_shop_conn.BIS_SHOP_CONN_ID = bis_cont.Bis_Shop_Conn_Id
+                 LEFT JOIN ods.ods_pl_powerdes_bis_more_manage_leasee_dt leasee
+                           on leasee.bis_cont_id = bis_cont.bis_cont_id
+                 left join ods.ods_pl_powerdes_bis_project_dt bis_project
+                           on BIS_CONT.BIS_PROJECT_ID = BIS_PROJECT.BIS_PROJECT_ID
+                 left join ods.ods_pl_powerdes_bis_shop_dt bis_shop on BIS_CONT.BIS_SHOP_ID = BIS_SHOP.BIS_SHOP_ID
+    ) table1
+        inner join
+    -- 实收费用表
+        (
+            select bis_cont_id,
+                   bis_must_id,
+                   bis_fact_id,
+                   qz_year_month,
+                   fact_type,
+                   billing_period_begin,
+                   billing_period_end,
+                   money     fact_money,
+                   fact_date fact_date,
+                   MUST_RENT_LAST_PAY_DATE
+            from ods.ods_pl_powerdes_bis_fact2_dt bis_fact2
+            where is_delete = '1' -- 实收表is_delete = '1'为有效
+              and fact_type is not null
+        ) fct
+    on table1.bis_cont_id = fct.bis_cont_id
+        left join (select distinct * from ods.ods_pl_powerdes_pms_fin_charge_item_dict_dt) PMS_FIN_CHARGE_ITEM_DICT
+                  on fct.fact_type = PMS_FIN_CHARGE_ITEM_DICT.CHARGE_ITEM_CODE
+where PMS_FIN_CHARGE_ITEM_DICT.IS_DEL = '0';

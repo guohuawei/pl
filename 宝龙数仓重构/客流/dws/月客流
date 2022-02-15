@@ -1,0 +1,41 @@
+-- 月客流
+select t.area_name,          -- 区域名称
+       t.area_id,            -- 区域id
+       t.bis_project_id,     -- 项目id
+       t2.total_rent_square, -- 项目下铺位面积总和
+       t.short_name,         -- 项目名称
+       t.site_key,           -- 场所编码
+       t.month_id,           -- 月份
+       t.budget_flow,        -- 期望客流
+       t.actual_flow         -- 实际客流
+
+from (
+         select area_name,                    -- 区域名称
+                area_id,                      -- 区域id
+                bis_project_id,               -- 项目id
+                short_name,                   -- 项目名称
+                site_key,                     -- 场所编码
+                month_id,                     -- 月份
+                sum(budget_flow) budget_flow, -- 期望客流
+                sum(actual_flow) actual_flow  -- 实际客流
+         from dws.dws_bis_passenger_flow_day_big_dt
+         where dt = date_format(current_date(), 'yyyyMMdd')
+         group by area_name, area_id, bis_project_id, short_name, site_key, month_id
+     ) t
+         left join
+     (
+         select bis_project_id,
+                sum(rent_square) as total_rent_square-- 项目下铺位面积总和
+         from ods.ods_pl_powerdes_bis_store_dt bis_store
+         where is_delete = 'N'
+           and status_cd = '1'
+         group by bis_project_id
+     ) t2 on t.bis_project_id = t2.bis_project_id
+
+
+
+
+
+
+
+

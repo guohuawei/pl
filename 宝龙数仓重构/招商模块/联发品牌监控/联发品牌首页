@@ -1,0 +1,112 @@
+select table1.brand_ownership, -- 品牌归属（1:总部、2区域 )
+       table1.store_type,      -- 物业类型 1：购物中心 2:商业街 3：住宅 4：住宅底商 5：写字楼,
+       table1.areaType,        -- 品牌所属区域
+       table1.totalArea,       -- 联发品牌关联有效合同的铺位面积之和
+       table1.store_count,     -- 联发品牌关联有效合同的铺位数之和
+       table2.cont_count       -- 联发品牌有效合同结束时间在未来3个月内的合同数
+from (
+         select brand_ownership,               -- 品牌归属（1:总部、2区域 )
+                store_type,
+                areaType,                      -- 品牌所属区域
+                sum(totalArea)     totalArea,  -- 联发品牌关联有效合同的铺位面积之和
+                count(store_count) store_count -- 联发品牌关联有效合同的铺位数之和
+         from (
+                  select bis_shop.bis_shop_id,     -- 品牌id
+                         t.bis_cont_id,            -- 合同id
+                         bis_shop.areaType,        -- 品牌所属区域
+                         t.store_type,
+                         bis_shop.brand_ownership, -- 品牌归属（1:总部、2区域 )
+                         t.totalArea,              -- 一个合同下所有店铺面积总和
+                         t.store_count             -- 合同下所有铺位数
+                  from (
+                           -- 品牌区域打散
+                           SELECT tmp.bis_shop_id,             -- 品牌id
+                                  tmp.brand_ownership,         -- 品牌归属（1:总部、2区域 )
+                                  trim(tmp1.areaType) areaType -- 品牌所属区域
+                           FROM (
+                                    SELECT bis_shop.bis_shop_id,     -- 品牌id
+                                           bis_shop.brand_ownership, -- 品牌归属（1:总部、2区域 )
+                                           bis_shop.area_type        -- 区域
+                                    FROM ods.ods_pl_powerdes_bis_shop_dt bis_shop
+                                ) tmp LATERAL VIEW explode(split(area_type, ',')) tmp1 AS areaType
+                       ) bis_shop
+                           left join
+                       (
+                           select bis_cont_bis_store_ids.bis_shop_id,                                -- 品牌id
+                                  bis_cont_bis_store_ids.bis_cont_id,                                -- 合同id
+                                  bis_cont_bis_store_ids.store_type,
+                                  nvl(sum(bis_store.rent_square), 0)                     totalArea,  -- 一个合同下所有店铺面积总和
+                                  if(sum(bis_store.rent_square) is null, 0, count(1)) as store_count -- 合同下所有铺位数
+                           from (
+                                    select t.bis_store_id,
+                                           T.bis_cont_id,
+                                           t.bis_shop_id,
+                                           store_type
+                                    from (
+                                             -- 铺位打散
+                                             SELECT tmp.bis_cont_id,
+                                                    tmp.bis_store_ids,
+                                                    bis_store_id,
+                                                    bis_project_id,
+                                                    bis_shop_id,
+                                                    store_type
+
+                                             FROM (
+                                                      SELECT bis_cont_id,
+                                                             bis_store_ids,
+                                                             bis_project_id,
+                                                             bis_shop_id,
+                                                             store_type -- 物业类型 1：购物中心 2:商业街 3：住宅 4：住宅底商 5：写字楼,
+                                                      FROM ods.ods_pl_powerdes_bis_cont_dt
+                                                      where effect_flg = 'Y'
+                                                  ) tmp LATERAL VIEW explode(split(bis_store_ids, ',')) tmp1 AS bis_store_id
+                                         ) t
+                                ) bis_cont_bis_store_ids
+                                    left join ods.ods_pl_powerdes_bis_store_dt bis_store
+                                              on bis_store.bis_store_id = bis_cont_bis_store_ids.bis_store_id
+                           group by bis_cont_bis_store_ids.bis_shop_id, bis_cont_bis_store_ids.bis_cont_id,
+                                    bis_cont_bis_store_ids.store_type
+                       ) t on bis_shop.bis_shop_id = t.bis_shop_id
+              ) t
+         group by t.brand_ownership, t.store_type, t.areaType
+     ) table1
+         left join
+     (
+         select t.brand_ownership,     -- 品牌归属（1:总部、2区域 )
+                t.store_type,          -- 品牌所属区域
+                t.areaType,            -- 品牌所属区域
+                count(1) as cont_count -- 联发品牌有效合同结束时间在未来3个月内的合同数
+         from (
+                  select bis_shop.bis_shop_id,     -- 品牌id
+                         bis_shop.brand_ownership, -- 品牌归属（1:总部、2区域 )
+                         t.bis_cont_id,            -- 合同id
+                         t.store_type,
+                         bis_shop.areaType         -- 品牌所属区域
+                  from (
+                           -- 品牌区域打散
+                           SELECT tmp.bis_shop_id,     -- 品牌id
+                                  tmp.brand_ownership, -- 品牌归属（1:总部、2区域 )
+                                  tmp1.areaType        -- 区域
+                           FROM (
+                                    SELECT bis_shop.bis_shop_id,     -- 品牌id
+                                           bis_shop.brand_ownership, -- 品牌归属（1:总部、2区域 )
+                                           bis_shop.area_type        -- 品牌所属区域
+                                    FROM ods.ods_pl_powerdes_bis_shop_dt bis_shop
+                                ) tmp LATERAL VIEW explode(split(area_type, ',')) tmp1 AS areaType
+                       ) bis_shop
+                           left join
+                       (
+                           select bis_cont_id,
+                                  bis_shop_id,
+                                  store_type,
+                                  substr(cont_end_date, 0, 10)
+                           from ods.ods_pl_powerdes_bis_cont_dt bis_cont
+                           where effect_flg = 'Y'
+                             AND substr(cont_end_date, 0, 10) BETWEEN current_date AND add_months(current_date, 3)
+                       ) t on bis_shop.bis_shop_id = t.bis_shop_id
+              ) t
+         group by t.brand_ownership, t.store_type, t.areaType
+     ) table2 on table1.brand_ownership = table2.brand_ownership and table1.store_type = table2.store_type and
+                 table1.areaType = table2.areaType;
+
+

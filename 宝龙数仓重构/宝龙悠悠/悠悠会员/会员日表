@@ -1,0 +1,15 @@
+select trim(t1.project_id),                                 -- 项目id
+       mp.register_time,                                    -- 会员注册时间
+       t1.uid,                                              -- 会员id
+       case
+           when t1.level in (3, 4, 5) then '金龙卡'
+           when t1.level = 2 then '银龙卡'
+           when t1.level = 1 then '龙卡' end as member_level, -- 会员级别
+       t3.pay_price,                                        -- 消费金额
+       t3.create_time,                                      -- 消费时间
+       current_date                                         -- ETL时间
+from ods.ods_pl_bl_member_level_dt t1
+         LEFT JOIN ods.ods_pl_bl_member_profile_dt mp ON mp.id = t1.uid and trim(t1.project_id) = trim(mp.project_id)
+         left join ods.ods_pl_bl_order_base_dt t3 on t1.uid = t3.uid and trim(t1.project_id) =trim(t3.project_id)
+where t1.is_member = '1'
+  and t1.is_man_merber = 1;

@@ -1,0 +1,37 @@
+select t2.area_name,                    -- 项目区域
+       t2.id,                           -- 区域id
+       int(bis_project.stage),               -- 项目阶段(1:筹备期 2:培育期 3:稳定期 4；调改期)
+       bis_project.province,            -- 项目所属省份
+       BIS_PROJECT.PROJECT_NAME,        -- 项目名称
+       bis_project.short_name,          -- 项目简称
+       bis_project.bis_project_id,      -- 项目id
+       int(bis_project.is_business_project), -- 是否是商业项目(1:商业项目)
+       int(bis_project.oper_status),         -- 项目状态（1：在建 2：在营）
+       bis_project.open_date,           -- 项目开业时间
+       bis_multi.bis_multi_id,          -- 多经点位id
+       int(bis_floor.charge_type),           -- 物业类型(购物中心-1、商业街-2、住宅-3、住宅底商-4、写字楼-5
+       bis_floor.bis_floor_id,          -- 楼层id
+       bis_floor.floor_num,             -- 楼层名称
+       bis_floor.building_id,           -- 楼栋id
+       bis_floor.building_num,          -- 楼栋名称
+       bis_multi.square,                -- 铺位计租面积
+       bis_multi.charge_type,           -- 多经业态
+       int(bis_multi.MULTI_CHARGE_TYPE),     -- 多径类型（1：固定点位 2：临时点位 3：宣传点位 4：ATM 5：其他 6:DP点位 7：外摆点位 8：仓库点位 9：车展点位 10：房展点位 11：营销点位）
+       current_date                     -- ETL时间
+from ods.ods_pl_powerdes_bis_project_dt bis_project
+         left join ods.ods_pl_powerdes_bis_multi_dt bis_multi
+                   on bis_multi.BIS_PROJECT_ID = BIS_PROJECT.BIS_PROJECT_ID  and
+                      bis_multi.IS_DELETE = 0
+         left join
+     (
+         select bs_area.id,
+                bs_area.area_name,  -- 区域名称
+                bs_mall.area,
+                bs_mall.out_mall_id -- 项目id
+         from ods.ods_pl_pms_bis_db_bs_area_dt bs_area
+                  left join ods.ods_pl_pms_bis_db_bs_mall_dt bs_mall
+                            on bs_area.id = bs_mall.area
+     ) t2 on bis_project.bis_project_id = t2.out_mall_id
+         left join ods.ods_pl_powerdes_bis_floor_dt bis_floor
+                   on bis_multi.bis_floor_id = bis_floor.bis_floor_id and
+                      bis_multi.bis_project_id = bis_floor.bis_project_id;

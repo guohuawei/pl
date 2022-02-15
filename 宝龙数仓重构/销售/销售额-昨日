@@ -1,0 +1,100 @@
+select t2.area_name,                    -- 区域名称
+       t2.id,                           -- 区域id
+       bis_project.bis_project_id,      -- 项目id
+       bis_project.short_name,          -- 项目名称
+       t1.store_type,                   -- -- 物业类型（1：购物中心 2:商业街 3：住宅 4：住宅底商 5：写字楼）
+       t1.yesterday_total_money,        -- 昨日销售额
+       t1.before_yesterday_total_money, -- 前天销售额
+       round((t1.yesterday_total_money - t1.before_yesterday_total_money) / t1.before_yesterday_total_money,
+             2) as hb                   -- 昨日环比
+from (
+         select BIS_PROJECT_ID,
+                store_type,
+                max(t.yesterday_total_money)        yesterday_total_money,
+                max(t.before_yesterday_total_money) before_yesterday_total_money
+         from (
+                  select BIS_SALES_DAY.BIS_PROJECT_ID,
+                         case
+                             when substr(SALES_DATE, 0, 10) = date_sub(current_date, 1) then sum(SALES_MONEY)
+                             else null end as      yesterday_total_money,
+                         case
+                             when substr(SALES_DATE, 0, 10) = date_sub(current_date, 2) then sum(SALES_MONEY)
+                             else null end as      before_yesterday_total_money,
+                         substr(SALES_DATE, 0, 10) SALES_DATE,
+                         bis_cont.store_type
+
+                  from dwd.dwd_bis_sales_day_big_dt BIS_SALES_DAY
+                           left join ods.ods_pl_powerdes_bis_cont_dt BIS_CONT
+                                     on BIS_CONT.BIS_CONT_ID = BIS_SALES_DAY.BIS_CONT_ID and
+                                        BIS_CONT.EFFECT_FLG <> 'D'
+                  where (substr(SALES_DATE, 0, 10) = date_sub(current_date, 1) or
+                         substr(SALES_DATE, 0, 10) = date_sub(current_date, 2))
+                    AND BIS_SALES_DAY.BIS_CONT_ID IN (
+                      -- 考核铺位
+                      select t.bis_cont_id
+                      from (
+                               select t1.bis_cont_id,   -- 合同id
+                                      concat_ws('_', collect_list(bis_store.is_assess)),
+                                      IF(locate('Y', concat_ws('_', collect_list(bis_store.is_assess))) > 0,
+                                         'Y',
+                                         'N') is_assess -- Y:考核 N:不考核
+                               from (
+                                        select t.bis_store_id,
+                                               T.bis_cont_id
+                                        from (
+                                                 -- 铺位打散
+                                                 SELECT tmp.bis_cont_id,
+                                                        tmp.bis_store_ids,
+                                                        bis_store_id,
+                                                        bis_project_id
+                                                 FROM (
+                                                          SELECT bis_cont_id,
+                                                                 bis_store_ids,
+                                                                 bis_project_id
+                                                          FROM ods.ods_pl_powerdes_bis_cont_dt
+                                                      ) tmp LATERAL VIEW explode(split(bis_store_ids, ',')) tmp1 AS bis_store_id
+                                             ) t
+                                    ) t1
+                                        inner join ods.ods_pl_powerdes_bis_store_dt bis_store
+                                                   on bis_store.bis_store_id = t1.bis_store_id -- and IS_DELETE = 'N' and bis_store.status_cd = '1' -- 有效铺位
+                               group by t1.bis_cont_id
+                           ) t
+                      where t.is_assess = 'Y'
+                  )
+                    and BIS_SALES_DAY.dt = date_format(current_date, 'yyyyMMdd')
+                  group by BIS_SALES_DAY.BIS_PROJECT_ID, substr(SALES_DATE, 0, 10), BIS_CONT.store_type
+              ) t
+         group by t.BIS_PROJECT_ID, t.store_type
+     ) t1
+         inner join ods.ods_pl_powerdes_bis_project_dt bis_project
+                    on bis_project.bis_project_id = t1.bis_project_id and bis_project.oper_status = '2' and
+                       bis_project.is_business_project = '1'
+         left join
+     (
+         select bs_area.id,
+                bs_area.area_name,  -- 区域名称
+                bs_mall.area,
+                bs_mall.out_mall_id -- 项目id
+         from ods.ods_pl_pms_bis_db_bs_area_dt bs_area
+                  left join ods.ods_pl_pms_bis_db_bs_mall_dt bs_mall
+                            on bs_area.id = bs_mall.area
+         where bs_mall.is_del = '0'
+           and stat = '2'
+     ) t2 on bis_project.bis_project_id = t2.out_mall_id;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

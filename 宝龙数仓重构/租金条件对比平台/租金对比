@@ -1,0 +1,180 @@
+select t1.bis_project_id,                                                       -- 项目id
+       max(t1.short_name),                                                      -- 项目名称
+       max(t1.charge_type),                                                     -- 铺位物业类型(购物中心-1、商业街-2、住宅-3、住宅底商-4、写字楼-5）
+       max(t1.floor_num),                                                       -- 楼层
+       max(t1.bis_store_id),                                                    -- 铺位id
+       max(t1.store_no),                                                        -- 铺位号
+       max(t1.rent_square),                                                     -- 铺位计租面积
+       max(t1.rent_square_section),                                             -- 铺位面积区间
+       t1.bis_cont_id,                                                          -- 合同id
+       max(t1.cont_to_fail_date),                                               -- 合同解约时间
+       max(t1.cont_end_date),                                                   -- 合同结束时间
+       max(t1.cont_start_date),                                                 -- 合同开始时间
+       max(t1.pay_way),                                                         -- 租金方式(1、固定租金；2、提成租金；3、两者取高；4、其他)
+       max(t1.UNIT_MONEY),                                                      -- 租金单价
+       max(t1.ROYALTY_RATIO),                                                   -- 租金抽成比例
+       row_number() over (partition by t1.bis_project_id, t1.bis_cont_id) year, -- 租金年份
+       max(t1.formats),                                                         -- 业态
+       max(t1.thirdly_formats_code),                                            -- 三级业态code
+       min(t1.rent_start_date),                                                 -- 租金开始时间
+       t1.rent_end_date,                                                        -- 租金结束时间
+       max(t1.stage),                                                           -- 项目阶段('1、筹备期 2、培育期 3、稳定期 4、调改期')
+       max(t1.oper_status)                                                      -- '项目状态（1：在建；2：在营）'
+from (
+         select bis_project.bis_project_id,                                                                            -- 项目id
+                bis_project.stage,                                                                                     -- 项目阶段('1、筹备期 2、培育期 3、稳定期 4、调改期')
+                bis_project.short_name,                                                                                -- 项目名称
+                bis_project.oper_status,                                                                               -- '项目状态（1：在建；2：在营）'
+                bis_floor.charge_type,                                                                                 -- 铺位物业类型(购物中心-1、商业街-2、住宅-3、住宅底商-4、写字楼-5）
+                regexp_replace(bis_floor.floor_num, 'F', 'L')                                     floor_num,           -- 楼层
+                bis_store.bis_store_id,                                                                                -- 铺位id
+                bis_store.store_no,                                                                                    -- 铺位号
+                bis_store.rent_square,                                                                                 -- 铺位计租面积
+                case
+                    when bis_store.rent_square < 60 then bis_store.rent_square
+                    when bis_store.rent_square >= 60 and bis_store.rent_square < 100 then '60-100'
+                    when bis_store.rent_square >= 100 and bis_store.rent_square < 200 then '100-200'
+                    when bis_store.rent_square >= 200 and bis_store.rent_square < 500 then '200-500'
+                    when bis_store.rent_square >= 500 and bis_store.rent_square < 800 then '500-800'
+                    else null end                                                              as rent_square_section, -- 铺位面积区间
+                t1.bis_cont_id,                                                                                        -- 合同id
+                t1.cont_to_fail_date,                                                                                  -- 合同解约时间
+                t1.cont_end_date,                                                                                      -- 合同结束时间
+                t1.cont_start_date,                                                                                    -- 合同开始时间
+                t1.pay_way,                                                                                            -- 租金方式(1、固定租金；2、提成租金；3、两者取高；4、其他)
+                case when t1.pay_way in ('1', '3') then bis_must_rent.UNIT_MONEY else null end as UNIT_MONEY,          -- 租金单价
+                case when t1.pay_way = '2' then bis_must_rent.ROYALTY_RATIO else null end      as ROYALTY_RATIO,       -- 租金抽成比例
+                int(bis_must_rent.year)                                                           year,                -- 租金年份
+                t.formats,                                                                                             -- 业态
+                t.thirdly_formats_code,                                                                                -- 三级业态code
+                date_format(add_months(to_date(t1.cont_start_date), 12 * (int(bis_must_rent.year) - 1)),
+                            'yyyy-MM-dd')                                                         rent_start_date,     -- 租金开始时间
+                if(cont_to_fail_date is null,
+                   date_sub(date_format(add_months(to_date(t1.cont_start_date), 12 * (int(bis_must_rent.year))),
+                                        'yyyy-MM-dd'), 1),
+                   if(cont_to_fail_date >= date_sub(date_format(add_months(
+                                                                        to_date(t1.cont_start_date),
+                                                                        12 * (int(bis_must_rent.year))),
+                                                                'yyyy-MM-dd'), 1),
+                      date_sub(date_format(
+                                       add_months(to_date(t1.cont_start_date),
+                                                  12 * (int(bis_must_rent.year))),
+                                       'yyyy-MM-dd'),
+                               1),
+                      substring(cont_to_fail_date, 0, 10)))                                       rent_end_date        -- 租金结束时间
+
+         from (
+                  select bis_store.bis_store_id, -- 铺位id
+                         bis_store.store_no,     -- 铺位号
+                         bis_store.rent_square,  -- 铺位计租面积
+                         bis_store.bis_project_id,
+                         bis_store.bis_floor_id
+                  from ods.ods_pl_powerdes_bis_store_dt bis_store
+                  where bis_store.rent_square < 800
+              ) bis_store
+                  left join
+              (
+                  -- 铺位打散
+                  SELECT tmp.bis_cont_id,
+                         tmp.bis_store_ids,
+                         bis_store_id,
+                         bis_project_id,
+                         cont_start_date,
+                         cont_end_date,
+                         cont_to_fail_date,
+                         pay_way,
+                         bis_shop_id
+                  FROM (
+                           SELECT bis_cont_id,
+                                  bis_store_ids,
+                                  bis_project_id,
+                                  cont_start_date,
+                                  cont_end_date,
+                                  cont_to_fail_date,
+                                  pay_way,
+                                  bis_shop_id
+                           FROM ods.ods_pl_powerdes_bis_cont_dt
+                           where contract_Templet_Info_Id2 is not null
+                             and RES_APPROVE_ID1 is not null
+                             and RES_APPROVE_ID2 is not null
+                             and is_Create_Rent = '1'
+                       ) tmp LATERAL VIEW explode(split(bis_store_ids, ',')) tmp1 AS bis_store_id
+              ) t1 on bis_store.bis_store_id = t1.bis_store_id
+                  inner join ods.ods_pl_powerdes_bis_floor_dt bis_floor
+                             on bis_store.bis_floor_id = bis_floor.bis_floor_id and charge_type = '1'
+                  inner join ods.ods_pl_powerdes_bis_project_dt bis_project
+                             on bis_store.bis_project_id = bis_project.bis_project_id
+                  left join ods.ods_pl_powerdes_bis_must_rent_dt bis_must_rent
+                            on t1.bis_cont_id = bis_must_rent.bis_cont_id
+                  left join
+              (
+
+                  -- 新业态
+                  select BIS_SHOP.BIS_SHOP_ID,                                                                                       -- 商家id
+                         concat_ws("-", max(case
+                                                when BIS_SHOP_SORT_NEW.SORT_TYPE = 1 then BIS_SHOP_SORT_NEW.SORT_NAME
+                                                else null end), max(case
+                                                                        when BIS_SHOP_SORT_NEW.SORT_TYPE = 2
+                                                                            then BIS_SHOP_SORT_NEW.SORT_NAME
+                                                                        else null end), max(case
+                                                                                                when BIS_SHOP_SORT_NEW.SORT_TYPE = 3
+                                                                                                    then BIS_SHOP_SORT_NEW.SORT_NAME
+                                                                                                else null end)) formats,
+
+                         max(case
+                                 when BIS_SHOP_SORT_NEW.SORT_TYPE = 3 then BIS_SHOP_SORT_NEW.layout_cd
+                                 else null end) as                                                              thirdly_formats_code -- 三级业态code
+
+
+                  from ods.ods_pl_powerdes_bis_shop_dt BIS_SHOP
+                           left join ods.ods_pl_powerdes_bis_shop_sort_new_rel_dt BIS_SHOP_SORT_NEW_REL
+                                     on BIS_SHOP.BIS_SHOP_ID = BIS_SHOP_SORT_NEW_REL.BIS_SHOP_ID
+                           left join ods.ods_pl_powerdes_bis_shop_sort_new_dt BIS_SHOP_SORT_NEW
+                                     on BIS_SHOP_SORT_NEW_REL.BIS_SHOP_SORT_ID = BIS_SHOP_SORT_NEW.BIS_SHOP_SORT_ID
+                  where BIS_SHOP.IS_NEW = '1'
+                  group by BIS_SHOP.BIS_SHOP_ID
+
+                  union all
+
+
+                  select BIS_SHOP.BIS_SHOP_ID,
+                         t1.formats,
+                         max(case
+                                 when BIS_SHOP_SORT.SORT_TYPE = 3 then BIS_SHOP_SORT.layout_cd
+                                 else null end) as thirdly_formats_code -- 三级业态code
+
+                  from ods.ods_pl_powerdes_bis_shop_dt BIS_SHOP
+
+                           inner join
+                       (
+                           select a1.SORT_NAME || '-' || a2.SORT_NAME || '-' || a3.SORT_NAME formats,
+                                  a3.BIS_SHOP_SORT_ID
+                           from (
+                                    SELECT distinct SORT_NAME, ss.BIS_SHOP_SORT_ID
+                                    FROM ods.ods_pl_powerdes_bis_shop_sort_new_dt ss,
+                                         ods.ods_pl_powerdes_bis_shop_sort_new_rel_dt ssr
+                                    WHERE ssr.bis_shop_sort_id = ss.bis_shop_sort_id
+                                      AND ss.sort_type = 1
+                                ) a1
+                                    left join (SELECT distinct SORT_NAME, ss.PARENT_ID, ss.BIS_SHOP_SORT_ID
+                                               FROM ods.ods_pl_powerdes_bis_shop_sort_new_dt ss,
+                                                    ods.ods_pl_powerdes_bis_shop_sort_new_rel_dt ssr
+                                               WHERE ssr.bis_shop_sort_id = ss.bis_shop_sort_id
+                                                 AND ss.sort_type = 2) a2 on a1.BIS_SHOP_SORT_ID = a2.PARENT_ID
+                                    left join (SELECT distinct SORT_NAME, ss.PARENT_ID, ss.BIS_SHOP_SORT_ID
+                                               FROM ods.ods_pl_powerdes_bis_shop_sort_new_dt ss,
+                                                    ods.ods_pl_powerdes_bis_shop_sort_new_rel_dt ssr
+                                               WHERE ssr.bis_shop_sort_id = ss.bis_shop_sort_id
+                                                 AND ss.sort_type = 3) a3 on a2.BIS_SHOP_SORT_ID = a3.PARENT_ID
+                       ) t1 on BIS_SHOP.SORT_NAME_ID = t1.BIS_SHOP_SORT_ID
+                           left join ods.ods_pl_powerdes_bis_shop_sort_rel_dt BIS_SHOP_SORT_REL
+                                     on BIS_SHOP.BIS_SHOP_ID = BIS_SHOP_SORT_REL.BIS_SHOP_ID
+                           left join ods.ods_pl_powerdes_bis_shop_sort_dt BIS_SHOP_SORT
+                                     on BIS_SHOP_SORT.BIS_SHOP_SORT_ID = BIS_SHOP_SORT_REL.BIS_SHOP_SORT_ID
+                  where (BIS_SHOP.is_new_shop = 1 or BIS_SHOP.is_new_shop is null)
+                    and (BIS_SHOP.is_new = '0' or BIS_SHOP.is_new is null)
+                    and BIS_SHOP.SORT_NAME_ID is not null
+                  group by BIS_SHOP.BIS_SHOP_ID, t1.formats
+              ) t on t1.bis_shop_id = t.bis_shop_id
+     ) t1
+group by t1.bis_project_id, t1.bis_cont_id, t1.rent_end_date;

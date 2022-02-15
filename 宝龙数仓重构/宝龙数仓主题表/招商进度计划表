@@ -1,0 +1,82 @@
+select t.*
+from (
+         select a2.bis_project_id,                                      -- 项目id
+                a8.project_name,                                        -- 项目名称
+                a8.open_date,                                           -- 项目开业日期
+                a8.OPER_STATUS,                                         -- 项目状态（1：在建 2：在营)
+                int(a8.is_business_project),                            -- 是否是商业项目(1:商业项目)
+                a8.stage,                                               -- 项目阶段(1:筹备期 2:培育期 3：稳定期 4：调改期)
+                a5.zs_plan_id,                                          -- 招商计划id
+                a2.bis_store_id,                                        -- 铺位id
+                a2.SQUARE_EQUITY,                                       -- 商铺建筑面积
+                a2.rent_square,                                         -- 商铺计租面积
+                a2.STATUS_CD as                       store_STATUS_CD,  -- 铺位有效状态
+                a2.IS_DELETE,                                           -- 铺位删除标识
+                a9.charge_type,                                         -- 商业街、购物中心
+                a6.bis_shop_id                        cont_bis_shop_id, -- 品牌id
+                a6.cont_no,                                             -- 合同号
+                a6.bis_cont_id,                                         -- 合同id
+                a6.EFFECT_FLG,                                          -- 合同生效状态标识
+                a6.STATUS_CD,                                           -- 合同状态(0：未签约 1：已审核 2：已解约 3：未审核 4：无效合同（补充商务条件产生） 5：待处理)
+                a6.SQUARE                             cont_SQUARE,      -- 合同建筑面积
+                a6.RENT_SQUARE                        cont_RENT_SQUARE, -- 合同计租面积
+                a3.bis_shop_id                        shop_bis_shop_id, -- 招商计划品牌id
+                a5.step_no,                                             -- 招商进度(1：蓄水 2：意向金 3：意向确认 4： 商务签批 5： 合同网批 6：合同双签 7：审图 8：进场 9: 开业)
+                a5.DISPLAY_NO,                                          -- 网批号
+                a5.status,                                              -- 招商进度完成状态 0 未完成 1 已完成
+                a5.COMPLETED_DATE,                                      -- 招商进度实际完成时间
+                a5.STEP_DISPLAY_NAME,                                   -- 招商进度步骤中文名称
+                a2.store_no,                                            -- 铺位号
+                a9.floor_num,                                           -- 楼层
+                a4.NAME_CN,                                             -- 品牌名称
+                a10.primary_forms,                                      -- 一级液态
+                a10.primary_forms_code,                                 -- 一级业态id
+                a3.charger_cd,                                          -- 责任人英文名称
+                a3.charger_name,                                        -- 责任人中文名称
+                bis_cont.CONT_END_DATE,                                 -- 合同结束时间
+                bis_cont.CONT_START_DATE,                               -- 合同开始时间
+                a6.RES_APPROVE_INFO_ID,                                 -- 网批id
+                a5.created_date,                                        -- 创建时间
+                row_number()
+                        over (partition by a8.bis_project_id,a6.cont_no,a3.id,a5.step_no
+                            order by a2.bis_store_id) row_num,          -- 计算合同网批、合同签署的合同的计租、建筑面积及品牌数量时,取序号为1的计算,避免一个合同多个铺位造成的数据翻倍
+                a3.zs_status,                                           -- 招商计划状态（1、进行中 2、成功 3、终止 4、合同结束)
+                current_date                                            -- ETL时间
+         from ods.ods_pl_powerdes_bis_store_zs_plan_rel_dt a1
+                  left join ods.ods_pl_powerdes_bis_store_dt a2 on a1.bis_store_id = a2.bis_store_id
+                  left join ods.ods_pl_powerdes_zs_plan_dt a3 on a1.zs_plan_id = a3.id
+                  left join ods.ods_pl_powerdes_bis_shop_dt a4 on a3.bis_shop_id = a4.bis_shop_id
+                  left join ods.ods_pl_powerdes_zs_plan_step_dt a5 on a3.id = a5.zs_plan_id
+                  left join
+              (
+                  select *
+                  from (
+                           select t1.display_no,
+                                  t2.zs_plan_id,
+                                  a7.bis_shop_id,
+                                  a7.cont_no,            -- 合同号
+                                  a7.bis_cont_id,        -- 合同id
+                                  a7.EFFECT_FLG,         -- 合同生效状态标识
+                                  a7.STATUS_CD,          -- 合同状态(0：未签约 1：已审核 2：已解约 3：未审核 4：无效合同（补充商务条件产生） 5：待处理)
+                                  a7.SQUARE,             -- 合同建筑面积
+                                  a7.RENT_SQUARE,        -- 合同计租面积
+                                  t1.res_approve_info_id -- 网批id
+                           from ods.ods_pl_powerdes_zs_plan_step_dt t2
+                                    left join ods.ods_pl_powerdes_res_approve_info_dt t1
+                                              on t1.display_no = t2.display_no
+                                    left join ods.ods_pl_powerdes_bis_cont_dt a7
+                                              on t1.RES_APPROVE_INFO_ID = a7.res_approve_id2 and
+                                                 a7.EFFECT_FLG <> 'D' and bis_cont_id is not null and
+                                                 cont_no is not null
+                       ) t
+              ) a6 on a5.display_no = a6.display_no and a3.id = a6.zs_plan_id
+                  left join ods.ods_pl_powerdes_bis_project_dt a8 on a2.bis_project_id = a8.bis_project_id
+                  left join ods.ods_pl_powerdes_bis_floor_dt a9 on a2.bis_floor_id = a9.bis_floor_id
+                  left join dwd.dwd_bis_shop_primary_forms_big_dt a10
+                            on a3.bis_shop_id = a10.bis_shop_id and a10.dt = date_format(current_date, 'yyyyMMdd')
+                  left join ods.ods_pl_powerdes_bis_cont_dt bis_cont on a6.bis_cont_id = bis_cont.bis_cont_id
+         where a3.DEL_FLAG <> '1'
+     ) t
+where t.bis_project_id is not null
+  and t.bis_store_id is not null
+;

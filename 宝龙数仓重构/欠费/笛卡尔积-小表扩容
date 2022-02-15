@@ -1,0 +1,85 @@
+insert OVERWRITE table dwd.dwd_bis_cross_join_project_basic01_big_dt partition (dt = '${hiveconf:nowdate}')
+select distinct bis_project.bis_project_id,
+                bis_project.short_name,
+                t2.year,
+                t2.month,
+                t2.year_month1,
+                t.charge_item_code must_type,
+                split("1,2,3,4,5,6,7,8,9,10", ",")
+from (
+         -- 时间维表
+         select year,
+                month,
+                year_month1
+         from dim.dim_pl_date
+         where year between '2010' and '2030'
+     ) t2,
+     (
+         -- 项目
+         select bis_project_id,
+                short_name
+         from ods.ods_pl_powerdes_bis_project_dt
+         where is_business_project = '1'
+           and oper_status = '2'
+         --and bis_project_id = '402834702b486353012b4ce1151706291'
+     ) bis_project,
+     (
+         -- 费项
+         select charge_item_code
+         from ods.ods_pl_powerdes_pms_fin_charge_item_dict_dt
+         where charge_item_code in ('1', '2')
+     ) t;
+
+
+insert OVERWRITE table dwd.dwd_bis_cross_join_project_basic01_result_big_dt partition (dt = '${hiveconf:nowdate}')
+select distinct bis_project_id,
+                short_name,
+                year,
+                month,
+                year_month1,
+                must_type,
+                num_key
+from dwd.dwd_bis_cross_join_project_basic01_big_dt
+         lateral view explode(num_arr) tb_view as num_key
+where dt = date_format(current_date(), 'yyyyMMdd');
+
+
+
+-- 合同表加随机列
+
+-- 合同表
+insert OVERWRITE table dwd.dwd_bis_cross_join_cont_basic01_result_big_dt partition (dt = '${hiveconf:nowdate}')
+select BIS_CONT.bis_project_id,
+       BIS_CONT.bis_cont_id,
+       BIS_CONT.bis_shop_id,
+       bis_cont.STORE_TYPE,                            -- 物业类型（1：购物中心 2:商业街 3：住宅 4：住宅底商 5：写字楼）
+       case
+           when bis_cont.bis_shop_name is null then bis_shop.NAME_CN
+           else bis_cont.bis_shop_name end as NAME_CN, -- 结果表取合同表中品牌名称，如合同表中品牌名称为空取品牌表中名称，  如全部为空  及为空
+       ceiling(rand() * 9)                 as num_key
+from ods.ods_pl_powerdes_bis_cont_dt bis_cont
+         left join ods.ods_pl_powerdes_bis_shop_dt bis_shop
+                   on BIS_CONT.BIS_SHOP_ID = BIS_SHOP.BIS_SHOP_ID;
+
+
+-- 结果表
+insert OVERWRITE table dwd.dwd_bis_cross_join_result_big_dt partition (dt = '${hiveconf:nowdate}')
+select distinct t.bis_project_id,
+                t.short_name,
+                t.year,
+                t.month,
+                t.year_month1,
+                t.must_type,
+                t1.NAME_CN,
+                t1.bis_shop_id,
+                t1.bis_cont_id,
+                t1.store_type
+from dwd.dwd_bis_cross_join_project_basic01_result_big_dt t
+         join
+     dwd.dwd_bis_cross_join_cont_basic01_result_big_dt t1
+     on t.num_key = t1.num_key
+         and t.bis_project_id = t1.bis_project_id and t1.dt = date_format(current_date(), 'yyyyMMdd')
+where t.dt = date_format(current_date(), 'yyyyMMdd');
+
+
+
