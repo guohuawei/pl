@@ -1,3 +1,6 @@
+/**
+  商户产品开通
+ */
 select bis_cont.bis_project_id, -- 项目id
        bis_cont.bis_cont_id,    -- 合同id
        bis_cont.bis_shop_id,    -- 商家id
