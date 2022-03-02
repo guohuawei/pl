@@ -2003,16 +2003,16 @@ where bis_fact2.is_delete = 1
 
 
 
-select substr(t.sales_date, 0, 10), sum(SALES_MONEY), sum(tt),sum(assess_SALES_MONEY + no_assess_SALES_MONEY)
+select substr(t.sales_date, 0, 10), sum(SALES_MONEY), sum(tt), sum(assess_SALES_MONEY + no_assess_SALES_MONEY)
 from (
-         select BIS_SALES_DAY.BIS_PROJECT_ID,   -- 项目id
-                BIS_SALES_DAY.SALES_DATE,       -- 销售日期
-                sum(SALES_MONEY)    tt,
-                sum(case when is_assess = 'Y' THEN NVL(SALES_MONEY, 0) ELSE 0 END)             assess_SALES_MONEY,    -- 考核销售额
-                sum(case when is_assess = 'N' THEN NVL(SALES_MONEY, 0) ELSE 0 END)             no_assess_SALES_MONEY, -- 不考核销售额
+         select BIS_SALES_DAY.BIS_PROJECT_ID,                                                             -- 项目id
+                BIS_SALES_DAY.SALES_DATE,                                                                 -- 销售日期
+                sum(SALES_MONEY)                                                   tt,
+                sum(case when is_assess = 'Y' THEN NVL(SALES_MONEY, 0) ELSE 0 END) assess_SALES_MONEY,    -- 考核销售额
+                sum(case when is_assess = 'N' THEN NVL(SALES_MONEY, 0) ELSE 0 END) no_assess_SALES_MONEY, -- 不考核销售额
                 sum(case
                         when is_assess in ('Y', 'N') THEN NVL(SALES_MONEY, 0)
-                        ELSE 0 END) SALES_MONEY -- （考核 + 不考核）销售额
+                        ELSE 0 END)                                                SALES_MONEY            -- （考核 + 不考核）销售额
          from dwd.dwd_bis_sales_day_big_dt BIS_SALES_DAY
 
                   inner join
@@ -2042,7 +2042,7 @@ from (
                                          ) t
                                 ) t1
                                     left join ods.ods_pl_powerdes_bis_store_dt bis_store
-                                               on bis_store.bis_store_id = t1.bis_store_id -- and IS_DELETE = 'N' and bis_store.status_cd = '1' -- 有效铺位
+                                              on bis_store.bis_store_id = t1.bis_store_id -- and IS_DELETE = 'N' and bis_store.status_cd = '1' -- 有效铺位
                            group by t1.bis_cont_id
                        ) t
               ) t9 on BIS_SALES_DAY.bis_cont_id = t9.bis_cont_id
@@ -2053,6 +2053,234 @@ from (
 where t.bis_project_id = '40282b8927a42dff0127a4347f2b00fc'
   and substr(t.sales_date, 0, 10) like "2022%"
 group by substr(t.sales_date, 0, 10);
+
+
+
+select d.MUST_TYPE,    -- 费项
+       sum(d.oweMoney) -- 欠费
+from (
+         select t.bis_project_id,                                   -- 项目id
+                t.bis_cont_id,                                      -- 合同id
+                t.MUST_TYPE,                                        -- 费项（1：租金 2：物管）
+                substr(t.rent_last_pay_date, 0, 7) must_year_month, -- 应收月
+                sum(nvl(t.mustMoney, 0)) + sum(nvl(t1.adjMoney, 0)) -
+                sum(nvl(fact.factMoney, 0))        oweMoney         -- 欠费
+         from (
+                  -- 应收
+                  SELECT BIS_MUST2.bis_project_id,
+                         BIS_MUST2.bis_cont_id,
+                         BIS_MUST2.qz_year_month,
+                         BIS_MUST2.MUST_TYPE,
+                         BIS_MUST2.billing_period_end,
+                         BIS_MUST2.billing_period_begin,
+                         BIS_MUST2.bis_must_id,
+                         BIS_MUST2.rent_last_pay_date, -- 应收日期
+                         sum(nvl(BIS_MUST2.money, 0)) as mustMoney
+                  FROM ods.ods_pl_powerdes_bis_must2_dt BIS_MUST2
+                  where BIS_MUST2.must_type in ('1', '2')
+                    and BIS_MUST2.is_show = 1
+                    and BIS_MUST2.is_delete = 0
+                    AND qz_year_month = '2022-02'
+                    and bis_cont_id = '8a7b868b7d5cad38017d6bc0851b6542'
+                  group by BIS_MUST2.bis_project_id, BIS_MUST2.bis_cont_id,
+                           BIS_MUST2.bis_must_id,
+                           BIS_MUST2.qz_year_month, BIS_MUST2.MUST_TYPE,
+                           BIS_MUST2.billing_period_end,
+                           BIS_MUST2.billing_period_begin, BIS_MUST2.rent_last_pay_date
+              ) t
+                  left join
+              (
+                  -- 特殊情况：两条应收除了 应收id和应收日期不一样（权责 ，费项 账期开始、账期结束 都一样），这个时候减免没法知道和哪条应收对应
+                  -- 处理方法：取这两条应收中应收日期最小的一条应收和减免关联
+
+                  select must.bis_must_id, -- 应收id
+                         adj.adjMoney      -- 减免
+                  from (
+                           -- 应收
+                           SELECT BIS_MUST2.bis_project_id,
+                                  BIS_MUST2.bis_cont_id,
+                                  BIS_MUST2.qz_year_month,
+                                  BIS_MUST2.MUST_TYPE,
+                                  BIS_MUST2.billing_period_end,
+                                  BIS_MUST2.billing_period_begin,
+                                  min(BIS_MUST2.rent_last_pay_date) rent_last_pay_date, -- 应收日期
+                                  min(BIS_MUST2.bis_must_id)   as   bis_must_id,
+                                  sum(nvl(BIS_MUST2.money, 0)) as   mustMoney
+                           FROM ods.ods_pl_powerdes_bis_must2_dt BIS_MUST2
+                           where BIS_MUST2.must_type in ('1', '2')
+                             and BIS_MUST2.is_show = 1
+                             and BIS_MUST2.is_delete = 0
+                             AND qz_year_month = '2022-02'
+                             and bis_cont_id = '8a7b868b7d5cad38017d6bc0851b6542'
+                           group by BIS_MUST2.bis_project_id,
+                                    BIS_MUST2.bis_cont_id,
+                                    BIS_MUST2.qz_year_month,
+                                    BIS_MUST2.MUST_TYPE,
+                                    BIS_MUST2.billing_period_end,
+                                    BIS_MUST2.billing_period_begin
+                       ) must
+                           left join
+                       (
+                           -- 减免
+                           SELECT bis_mf_adjust.bis_cont_id,
+                                  bis_mf_adjust.billing_period_end,
+                                  bis_mf_adjust.billing_period_begin,
+                                  bis_mf_adjust.qz_year_month,
+                                  bis_mf_adjust.FEE_TYPE,
+                                  sum(nvl(bis_mf_adjust.adjust_money, 0)) as adjMoney
+                           FROM ods.ods_pl_powerdes_bis_mf_adjust_dt bis_mf_adjust
+                           where bis_mf_adjust.is_del = 1
+                             and bis_mf_adjust.fee_type in ('1', '2')
+                             AND qz_year_month = '2022-02'
+                             and bis_cont_id = '8a7b868b7d5cad38017d6bc0851b6542'
+                           group by bis_mf_adjust.bis_cont_id,
+                                    bis_mf_adjust.qz_year_month,
+                                    bis_mf_adjust.FEE_TYPE,
+                                    bis_mf_adjust.billing_period_end,
+                                    bis_mf_adjust.billing_period_begin
+                       ) adj
+                           -- 合同 权责 费项 账期开始  账期结束
+                       on must.bis_cont_id = adj.bis_cont_id and
+                          must.qz_year_month = adj.qz_year_month and
+                          must.MUST_TYPE = adj.FEE_TYPE and
+                          must.billing_period_end = adj.billing_period_end and
+                          must.billing_period_begin = adj.billing_period_begin
+              ) t1 on t.bis_must_id = t1.bis_must_id
+                  left join
+              (
+                  SELECT bis_fact2.bis_cont_id,
+                         bis_fact2.bis_must_id,
+                         bis_fact2.fact_type,
+                         sum(nvl(bis_fact2.money, 0)) as factMoney
+                  FROM ods.ods_pl_powerdes_bis_fact2_dt bis_fact2
+                  where bis_fact2.is_delete = 1
+                    and bis_fact2.fact_type in ('1', '2')
+                    and bis_fact2.bis_must_id is not null
+                    AND qz_year_month = '2022-02'
+                    and bis_cont_id = '8a7b868b7d5cad38017d6bc0851b6542'
+                  group by bis_fact2.bis_cont_id, bis_fact2.bis_must_id, bis_fact2.fact_type
+              ) fact
+              on t.bis_cont_id = fact.bis_cont_id and
+                 t.bis_must_id = fact.bis_must_id and
+                 t.MUST_TYPE = fact.FACT_TYPE
+         group by t.bis_project_id, t.bis_cont_id, substr(t.rent_last_pay_date, 0, 7),
+                  t.MUST_TYPE
+     ) d
+         left join ods.ods_pl_powerdes_bis_project_dt bis_project
+                   on d.bis_project_id = bis_project.bis_project_id
+group by d.MUST_TYPE;
+
+
+
+
+select bis_project.project_name, -- 项目名称
+       d.bis_project_id,         -- 项目id
+       d.bis_cont_id,            -- 合同id
+       d.must_year_month,        -- 应收月
+       d.MUST_TYPE,              -- 费项
+       d.oweMoney                -- 欠费
+from (
+         select t.bis_project_id,                                   -- 项目id
+                t.bis_cont_id,                                      -- 合同id
+                t.MUST_TYPE,                                        -- 费项（1：租金 2：物管）
+                substr(t.rent_last_pay_date, 0, 7) must_year_month, -- 应收月
+                sum(nvl(t.mustMoney, 0)) + sum(nvl(t1.adjMoney, 0)) -
+                sum(nvl(fact.factMoney, 0))        oweMoney         -- 欠费
+         from (
+                  -- 应收
+                  SELECT BIS_MUST2.bis_project_id,
+                         BIS_MUST2.bis_cont_id,
+                         BIS_MUST2.qz_year_month,
+                         BIS_MUST2.MUST_TYPE,
+                         BIS_MUST2.billing_period_end,
+                         BIS_MUST2.billing_period_begin,
+                         BIS_MUST2.bis_must_id,
+                         BIS_MUST2.rent_last_pay_date, -- 应收日期
+                         sum(nvl(BIS_MUST2.money, 0)) as mustMoney
+                  FROM ods.ods_pl_powerdes_bis_must2_dt BIS_MUST2
+                  where BIS_MUST2.must_type in ('1', '2')
+                    and BIS_MUST2.is_show = 1
+                    and BIS_MUST2.is_delete = 0
+                  group by BIS_MUST2.bis_project_id, BIS_MUST2.bis_cont_id,
+                           BIS_MUST2.bis_must_id,
+                           BIS_MUST2.qz_year_month, BIS_MUST2.MUST_TYPE,
+                           BIS_MUST2.billing_period_end,
+                           BIS_MUST2.billing_period_begin, BIS_MUST2.rent_last_pay_date
+              ) t
+                  left join
+              (
+                  -- 特殊情况：两条应收除了 应收id和应收日期不一样（权责 ，费项 账期开始、账期结束 都一样），这个时候减免没法知道和哪条应收对应
+                  -- 处理方法：取这两条应收中应收日期最小的一条应收和减免关联
+                  select must.bis_must_id, -- 应收id
+                         adj.adjMoney      -- 减免
+                  from (
+                           -- 应收
+                           SELECT BIS_MUST2.bis_project_id,
+                                  BIS_MUST2.bis_cont_id,
+                                  BIS_MUST2.qz_year_month,
+                                  BIS_MUST2.MUST_TYPE,
+                                  BIS_MUST2.billing_period_end,
+                                  BIS_MUST2.billing_period_begin,
+                                  min(BIS_MUST2.rent_last_pay_date) rent_last_pay_date, -- 应收日期
+                                  min(BIS_MUST2.bis_must_id)   as   bis_must_id,
+                                  sum(nvl(BIS_MUST2.money, 0)) as   mustMoney
+                           FROM ods.ods_pl_powerdes_bis_must2_dt BIS_MUST2
+                           where BIS_MUST2.must_type in ('1', '2')
+                             and BIS_MUST2.is_show = 1
+                             and BIS_MUST2.is_delete = 0
+                           group by BIS_MUST2.bis_project_id,
+                                    BIS_MUST2.bis_cont_id,
+                                    BIS_MUST2.qz_year_month,
+                                    BIS_MUST2.MUST_TYPE,
+                                    BIS_MUST2.billing_period_end,
+                                    BIS_MUST2.billing_period_begin
+                       ) must
+                           left join
+                       (
+                           -- 减免
+                           SELECT bis_mf_adjust.bis_cont_id,
+                                  bis_mf_adjust.billing_period_end,
+                                  bis_mf_adjust.billing_period_begin,
+                                  bis_mf_adjust.qz_year_month,
+                                  bis_mf_adjust.FEE_TYPE,
+                                  sum(nvl(bis_mf_adjust.adjust_money, 0)) as adjMoney
+                           FROM ods.ods_pl_powerdes_bis_mf_adjust_dt bis_mf_adjust
+                           where bis_mf_adjust.is_del = 1
+                             and bis_mf_adjust.fee_type in ('1', '2')
+                           group by bis_mf_adjust.bis_cont_id,
+                                    bis_mf_adjust.qz_year_month,
+                                    bis_mf_adjust.FEE_TYPE,
+                                    bis_mf_adjust.billing_period_end,
+                                    bis_mf_adjust.billing_period_begin
+                       ) adj
+                           -- 合同 权责 费项 账期开始  账期结束
+                       on must.bis_cont_id = adj.bis_cont_id and
+                          must.qz_year_month = adj.qz_year_month and
+                          must.MUST_TYPE = adj.FEE_TYPE and
+                          must.billing_period_end = adj.billing_period_end and
+                          must.billing_period_begin = adj.billing_period_begin
+              ) t1 on t.bis_must_id = t1.bis_must_id
+                  left join
+              (
+                  -- 实收
+                  SELECT bis_fact2.bis_cont_id,
+                         bis_fact2.bis_must_id,
+                         bis_fact2.fact_type,
+                         sum(nvl(bis_fact2.money, 0)) as factMoney
+                  FROM ods.ods_pl_powerdes_bis_fact2_dt bis_fact2
+                  where bis_fact2.is_delete = 1
+                    and bis_fact2.fact_type in ('1', '2')
+                    and bis_fact2.bis_must_id is not null
+                  group by bis_fact2.bis_cont_id, bis_fact2.bis_must_id, bis_fact2.fact_type
+              ) fact
+              on t.bis_cont_id = fact.bis_cont_id and
+                 t.bis_must_id = fact.bis_must_id and
+                 t.MUST_TYPE = fact.FACT_TYPE
+         group by t.bis_project_id, t.bis_cont_id, substr(t.rent_last_pay_date, 0, 7),
+                  t.MUST_TYPE
+     ) d
+         left join ods.ods_pl_powerdes_bis_project_dt bis_project
+                   on d.bis_project_id = bis_project.bis_project_id
 
 
 

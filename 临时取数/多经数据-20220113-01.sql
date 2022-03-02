@@ -59,7 +59,7 @@ from ods.ods_pl_powerdes_bis_project_dt BIS_PROJECT
                            left join ods.ods_pl_powerdes_bis_cont_dt t2
                                      on t1.bis_project_id = t2.bis_project_id and t1.bis_multi_id = t2.bis_store_ids
                            left join ods.ods_pl_powerdes_bis_project_dt t3 on t1.bis_project_id = t3.bis_project_id
-                  where t3.open_date like '2021%'
+                  where t3.open_date like '2022%'
                     and t2.cont_start_date <= t3.open_date
                     and t1.is_delete = '0'
                     -- and t1.bis_project_id = '2b2f909171884d40846ebcfdd38ef544'
@@ -83,7 +83,7 @@ from ods.ods_pl_powerdes_bis_project_dt BIS_PROJECT
                                   t1.bis_multi_id
                            from ods.ods_pl_powerdes_bis_multi_dt t1
                                     left join ods.ods_pl_powerdes_bis_project_dt t2
-                                              on t1.bis_project_id = t2.bis_project_id and open_date like '2021%'
+                                              on t1.bis_project_id = t2.bis_project_id and open_date like '2022%'
                                     left join ods.ods_pl_powerdes_bis_cont_dt t3
                                               on t1.bis_project_id = t3.bis_project_id and
                                                  t1.bis_multi_id = t3.bis_store_ids
@@ -101,7 +101,7 @@ from ods.ods_pl_powerdes_bis_project_dt BIS_PROJECT
 
                   from ods.ods_pl_powerdes_bis_multi_dt t1
                            left join ods.ods_pl_powerdes_bis_project_dt t2
-                                     on t1.bis_project_id = t2.bis_project_id and open_date like '2021%'
+                                     on t1.bis_project_id = t2.bis_project_id and open_date like '2022%'
                            left join ods.ods_pl_powerdes_bis_cont_dt t3
                                      on t1.bis_project_id = t3.bis_project_id and
                                         t1.bis_multi_id = t3.bis_store_ids
@@ -122,7 +122,7 @@ from ods.ods_pl_powerdes_bis_project_dt BIS_PROJECT
                          sum(t3.rent_square) rent_square -- 总面积
                   from ods.ods_pl_powerdes_bis_multi_dt t1
                            left join ods.ods_pl_powerdes_bis_project_dt t2
-                                     on t1.bis_project_id = t2.bis_project_id and open_date like '2021%'
+                                     on t1.bis_project_id = t2.bis_project_id and open_date like '2022%'
                            left join ods.ods_pl_powerdes_bis_cont_dt t3
                                      on t1.bis_project_id = t3.bis_project_id and
                                         t1.bis_multi_id = t3.bis_store_ids
@@ -138,7 +138,7 @@ from ods.ods_pl_powerdes_bis_project_dt BIS_PROJECT
                              round(months_between(cont_end_date, cont_start_date), 2)) price -- 总面积
                   from ods.ods_pl_powerdes_bis_multi_dt t1
                            left join ods.ods_pl_powerdes_bis_project_dt t2
-                                     on t1.bis_project_id = t2.bis_project_id and open_date like '2021%'
+                                     on t1.bis_project_id = t2.bis_project_id and open_date like '2022%'
                            left join ods.ods_pl_powerdes_bis_cont_dt t3
                                      on t1.bis_project_id = t3.bis_project_id and
                                         t1.bis_multi_id = t3.bis_store_ids
@@ -161,7 +161,7 @@ from ods.ods_pl_powerdes_bis_project_dt BIS_PROJECT
                            left join ods.ods_pl_powerdes_bis_cont_dt t2
                                      on t1.bis_project_id = t2.bis_project_id and t1.bis_multi_id = t2.bis_store_ids
                            left join ods.ods_pl_powerdes_bis_project_dt t3 on t1.bis_project_id = t3.bis_project_id
-                  where t3.open_date like '2021%'
+                  where t3.open_date like '2022%'
                     and t2.status_cd <> '2'
                     and t1.is_delete = '0'
                   group by trim(t1.bis_project_id), trim(t1.multi_charge_type), trim(t1.bis_multi_id)
@@ -183,7 +183,7 @@ from ods.ods_pl_powerdes_bis_project_dt BIS_PROJECT
                                   t1.bis_multi_id
                            from ods.ods_pl_powerdes_bis_multi_dt t1
                                     left join ods.ods_pl_powerdes_bis_project_dt t2
-                                              on t1.bis_project_id = t2.bis_project_id and open_date like '2021%'
+                                              on t1.bis_project_id = t2.bis_project_id and open_date like '2022%'
                                     left join ods.ods_pl_powerdes_bis_cont_dt t3
                                               on t1.bis_project_id = t3.bis_project_id and
                                                  t1.bis_multi_id = t3.bis_store_ids
@@ -202,13 +202,13 @@ from ods.ods_pl_powerdes_bis_project_dt BIS_PROJECT
                            select t1.bis_project_id,
                                   t1.multi_charge_type,
                                   t3.RENT_PROFIT_TOTAL /
-                                round(months_between(cont_end_date, cont_start_date), 2) as price -- 每个点位的单价
+                                  round(months_between(cont_end_date, cont_start_date), 2) as price -- 每个点位的单价
                            from ods.ods_pl_powerdes_bis_multi_dt t1
-                               left join ods.ods_pl_powerdes_bis_project_dt t2
-                           on t1.bis_project_id = t2.bis_project_id and open_date like '2021%'
-                               left join ods.ods_pl_powerdes_bis_cont_dt t3
-                               on t1.bis_project_id = t3.bis_project_id and
-                               t1.bis_multi_id = t3.bis_store_ids
+                                    left join ods.ods_pl_powerdes_bis_project_dt t2
+                                              on t1.bis_project_id = t2.bis_project_id and open_date like '2022%'
+                                    left join ods.ods_pl_powerdes_bis_cont_dt t3
+                                              on t1.bis_project_id = t3.bis_project_id and
+                                                 t1.bis_multi_id = t3.bis_store_ids
                            where t3.status_cd <> '2'
                              and t1.is_delete = '0'
                        ) t1
@@ -220,14 +220,14 @@ from ods.ods_pl_powerdes_bis_project_dt BIS_PROJECT
      (
          select t1.bis_project_id,
                 t1.multi_charge_type,
-                 t3.total_price / t1.rent_square as rent_price_area -- 已出租平均价（面积）
+                t3.total_price / t1.rent_square as rent_price_area -- 已出租平均价（面积）
          from (
                   select t1.bis_project_id,
                          t1.multi_charge_type,
                          sum(t3.rent_square) rent_square -- 总面积
                   from ods.ods_pl_powerdes_bis_multi_dt t1
                            left join ods.ods_pl_powerdes_bis_project_dt t2
-                                     on t1.bis_project_id = t2.bis_project_id and open_date like '2021%'
+                                     on t1.bis_project_id = t2.bis_project_id and open_date like '2022%'
                            left join ods.ods_pl_powerdes_bis_cont_dt t3
                                      on t1.bis_project_id = t3.bis_project_id and t1.bis_multi_id = t3.bis_store_ids
                   where t3.status_cd <> '2'
@@ -243,11 +243,11 @@ from ods.ods_pl_powerdes_bis_project_dt BIS_PROJECT
 
                            select t1.bis_project_id,
                                   t1.multi_charge_type,
-                                 t3.RENT_PROFIT_TOTAL /
-                                              round(months_between(cont_end_date, cont_start_date), 2)  as price -- 每个点位的单价
+                                  t3.RENT_PROFIT_TOTAL /
+                                  round(months_between(cont_end_date, cont_start_date), 2)  as price -- 每个点位的单价
                            from ods.ods_pl_powerdes_bis_multi_dt t1
                                     left join ods.ods_pl_powerdes_bis_project_dt t2
-                                              on t1.bis_project_id = t2.bis_project_id and open_date like '2021%'
+                                              on t1.bis_project_id = t2.bis_project_id and open_date like '2022%'
                                     left join ods.ods_pl_powerdes_bis_cont_dt t3
                                               on t1.bis_project_id = t3.bis_project_id and
                                                  t1.bis_multi_id = t3.bis_store_ids
@@ -258,7 +258,7 @@ from ods.ods_pl_powerdes_bis_project_dt BIS_PROJECT
               ) t3
               on t1.bis_project_id = t3.bis_project_id and t1.multi_charge_type = t3.multi_charge_type
      ) t10 on t2.bis_project_id = t10.bis_project_id and t2.multi_charge_type = t10.multi_charge_type
-where BIS_PROJECT.open_date like '2021%'
+where BIS_PROJECT.open_date like '2022%'
   and BIS_PROJECT.bis_project_id not in ('86DF8DD7649E414BE0530D14FB0AB5A0', 'D1FE66A7CCC2258AE0530B03FB0ADB4E')
 
 
